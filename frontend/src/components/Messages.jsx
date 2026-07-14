@@ -90,7 +90,7 @@ export default function Messages() {
   const [sophieError, setSophieError] = useState("");
 
   const handleSophieGenerate = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!sophiePrompt.trim()) return;
     setSophieLoading(true);
     setSophieError("");
@@ -500,14 +500,26 @@ export default function Messages() {
                       className="btn btn-primary"
                       style={{ height: "36px", padding: "0 14px", background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", border: "none", fontSize: "12px", fontWeight: "600" }}
                       onClick={handleApplySophieResult}
+                      disabled={sophieLoading}
                     >
                       Use this Template
                     </button>
                     <button
                       type="button"
                       className="btn btn-secondary"
+                      style={{ height: "36px", padding: "0 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                      onClick={() => handleSophieGenerate()}
+                      disabled={sophieLoading || !sophiePrompt.trim()}
+                    >
+                      {sophieLoading ? <RefreshCw size={12} className="sophie-spin" /> : <Wand2 size={12} />}
+                      {sophieLoading ? "Generating..." : "Regenerate"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
                       style={{ height: "36px", padding: "0 12px", fontSize: "12px" }}
                       onClick={() => setSophieResult("")}
+                      disabled={sophieLoading}
                     >
                       Clear
                     </button>

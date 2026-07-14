@@ -1069,9 +1069,12 @@ async def ask_sophie_ai(
         "Your task is to write high-converting outreach messages for social media automation.\n"
         f"Platform target: {payload.platform} (e.g. Instagram DMs or Telegram broadcasts).\n"
         f"Tone of voice: {payload.tone}.\n"
-        "You MUST generate messages that contain spintax variations (e.g., '{Hello|Hi|Hey} {username}, {how are you|hope you're well}!') to keep the messages unique and natural.\n"
-        "Remember to use the placeholder '{username}' or '@username' (for Instagram) or '{username}' (for general) where the recipient's username should be inserted.\n"
-        "Format the message cleanly. Output ONLY the message template. Do not include any intros, explanation, or markdown formatting blocks like ```."
+        "CRITICAL RULES:\n"
+        "- Keep the message short, concise, and simple (maximum 2 to 3 sentences total).\n"
+        "- Do NOT include any email-style signatures, sign-offs, or placeholders (e.g., do NOT write 'Best regards', 'Sincerely', '[Your Name]', or '[Company Name]').\n"
+        "- You MUST generate messages that contain spintax variations (e.g., '{Hello|Hi|Hey} {username}, {how are you|hope you're well}!') to keep each variant unique and natural.\n"
+        "- Use the placeholder '{username}' or '@username' (for Instagram) where the recipient's username should be inserted.\n"
+        "- Output ONLY the final message template. Do not include any introductory sentences, explanations, or markdown code blocks (like ```)."
     )
     
     headers = {
