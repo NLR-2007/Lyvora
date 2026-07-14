@@ -7,6 +7,7 @@ import {
   MessageSquare, Image, FileText, Layers,
   Bold, Italic, Code, Link2, Strikethrough, Underline,
   Upload, FileUp, Eye, EyeOff, Library,
+  RefreshCw,
 } from "lucide-react";
 
 const STATUS_COLORS = {
@@ -132,21 +133,26 @@ function FileUploadArea({ accept, label, file, onFileSelect, onClear, preview })
   );
 }
 
-export default function TgSchedule() {
+const toLocalInputValue = (date) => {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const defaultScheduleTime = () => toLocalInputValue(new Date(Date.now() + 10 * 60 * 1000));
+
+export default function TgSchedule({ onOpenBots }) {
   const [posts, setPosts] = useState([]);
   const [channels, setChannels] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
-    channel_id: "", content: "", scheduled_at: "", message_type: "text",
+    channel_id: "", content: "", scheduled_at: defaultScheduleTime(), message_type: "text",
     is_recurring: false, recurrence_rule: "",
   });
-  const [mediaFile, setMediaFile] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
-  const [existingFileName, setExistingFileName] = useState(null);
   const [mediaFiles, setMediaFiles] = useState([]);
   const [batchMessages, setBatchMessages] = useState([{ content: "", media_type: "text", file: null, filePreview: null }]);
   const [error, setError] = useState("");
+  const [dataError, setDataError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -183,21 +189,22 @@ export default function TgSchedule() {
   };
 
   const fetchData = async () => {
+    setDataError("");
     try {
       const [p, ch, tpl] = await Promise.all([apiFetch("/api/tg/posts"), apiFetch("/api/tg/channels"), apiFetch("/api/tg/templates")]);
       setPosts(p);
       setChannels(ch);
       setTemplates(tpl);
-    } catch {}
+      setForm((current) => ({ ...current, channel_id: current.channel_id || (ch[0] ? String(ch[0].id) : "") }));
+    } catch (fetchError) {
+      setDataError(fetchError.message || "Could not load scheduling data.");
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
-    setForm({ channel_id: "", content: "", scheduled_at: "", message_type: "text", is_recurring: false, recurrence_rule: "" });
-    setMediaFile(null);
-    setMediaPreview(null);
-    setExistingFileName(null);
+    setForm({ channel_id: channels[0] ? String(channels[0].id) : "", content: "", scheduled_at: defaultScheduleTime(), message_type: "text", is_recurring: false, recurrence_rule: "" });
     setMediaFiles([]);
     setBatchMessages([{ content: "", media_type: "text", file: null, filePreview: null }]);
     setError("");
@@ -265,9 +272,6 @@ export default function TgSchedule() {
     });
     setEditingId(post.id);
     setShowForm(true);
-    setMediaFile(null);
-    setMediaPreview(null);
-    setExistingFileName(null);
 
     const loadedFiles = [];
     if (post.media_path) {
@@ -317,9 +321,21 @@ export default function TgSchedule() {
   const handleCreate = async (e) => {
     e.preventDefault();
     setError("");
+    if (!form.channel_id) {
+      setError("Connect a Telegram bot and add a channel before creating a schedule.");
+      return;
+    }
+    const localDate = new Date(form.scheduled_at);
+    if (Number.isNaN(localDate.getTime())) {
+      setError("Choose a valid schedule date and time.");
+      return;
+    }
+    if (!editingId && localDate.getTime() <= Date.now()) {
+      setError("Schedule time must be in the future.");
+      return;
+    }
     setSaving(true);
     try {
-      const localDate = new Date(form.scheduled_at);
       const utcScheduledAt = localDate.toISOString();
       const processedContent = plainTextToHtml(form.content);
 
@@ -454,10 +470,30 @@ export default function TgSchedule() {
     <div className="tg-section">
       <div className="tg-section-header">
         <h3 className="tg-section-title"><CalendarClock size={18} /> Scheduled Messages</h3>
-        <button className="btn btn-primary" style={{ padding: "6px 14px", fontSize: "12px" }} onClick={() => { if (showForm) { resetForm(); setShowForm(false); } else { resetForm(); setShowForm(true); } }}>
+        <button className="btn btn-primary" style={{ padding: "6px 14px", fontSize: "12px" }} onClick={() => {
+          if (channels.length === 0) { onOpenBots?.(); return; }
+          if (showForm) { resetForm(); setShowForm(false); } else { resetForm(); setShowForm(true); }
+        }}>
           {showForm ? <><X size={13} /> Cancel</> : <><Plus size={13} /> New</>}
         </button>
       </div>
+
+      {dataError && (
+        <div className="auth-alert auth-alert-error" role="alert" style={{ marginBottom: "16px" }}>
+          {dataError}
+          <button type="button" className="btn btn-secondary" onClick={fetchData}>Retry</button>
+        </div>
+      )}
+
+      {!dataError && channels.length === 0 && (
+        <div className="glass-card schedule-setup-card">
+          <div>
+            <h4>Connect a destination first</h4>
+            <p>Scheduling needs an active Telegram bot and at least one channel or group.</p>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={onOpenBots}>Set Up Bot &amp; Channel</button>
+        </div>
+      )}
 
       {showForm && (
         <div className="glass-card" style={{ marginBottom: "16px", padding: "20px" }}>
@@ -479,7 +515,7 @@ export default function TgSchedule() {
                   const Icon = t.icon;
                   const active = form.message_type === t.value;
                   return (
-                    <button key={t.value} type="button" onClick={() => { setForm({ ...form, message_type: t.value }); setMediaFile(null); setMediaPreview(null); setExistingFileName(null); }}
+                    <button key={t.value} type="button" onClick={() => setForm({ ...form, message_type: t.value })}
                       style={{
                         padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 600,
                         border: "none",

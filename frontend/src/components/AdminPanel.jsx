@@ -171,7 +171,7 @@ export default function AdminPanel() {
     }
   }, []);
 
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = useCallback(async () => {
     try {
       let url = "/api/admin/audit-logs?limit=100";
       if (auditFilter) url += `&action=${encodeURIComponent(auditFilter)}`;
@@ -180,9 +180,9 @@ export default function AdminPanel() {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [auditFilter]);
 
-  const fetchHealth = async () => {
+  const fetchHealth = useCallback(async () => {
     setHealthLoading(true);
     setHealthError("");
     try {
@@ -193,16 +193,16 @@ export default function AdminPanel() {
     } finally {
       setHealthLoading(false);
     }
-  };
+  }, []);
 
-  const fetchFlags = async () => {
+  const fetchFlags = useCallback(async () => {
     try {
       const data = await apiFetch("/api/admin/feature-flags");
       setFeatureFlags(data);
     } catch (e) {
       console.error(e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchAll();
@@ -214,7 +214,7 @@ export default function AdminPanel() {
     if (activeSection === "audit") fetchAuditLogs();
     if (activeSection === "health") fetchHealth();
     if (activeSection === "config") fetchFlags();
-  }, [activeSection, auditFilter]);
+  }, [activeSection, fetchAuditLogs, fetchFlags, fetchHealth]);
 
   const handleSystemToggle = async (action) => {
     setSystemAction(action);
@@ -325,7 +325,6 @@ export default function AdminPanel() {
     { id: "logs", label: "Logs", icon: Activity },
   ];
 
-  const allRunning = stats?.ig_bot_running && stats?.tg_service_running;
   const anyRunning = stats?.ig_bot_running || stats?.tg_service_running;
   const visibleUsers = users.filter((user) => `${user.username} ${user.email}`.toLowerCase().includes(userSearch.toLowerCase()));
 

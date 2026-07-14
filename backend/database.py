@@ -1,7 +1,7 @@
 import os
 import bcrypt
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, event, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from backend.config import settings
@@ -192,6 +192,28 @@ class Setting(Base):
     
     key = Column(String(100), primary_key=True)
     value = Column(Text, nullable=False)
+
+
+class MetaConnection(Base):
+    """A tenant-owned Meta credential. Tokens are encrypted before assignment."""
+    __tablename__ = "meta_connections"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uq_meta_connection_workspace"),
+        UniqueConstraint("instagram_user_id", name="uq_meta_connection_instagram_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    connected_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    instagram_user_id = Column(String(100), nullable=False, index=True)
+    instagram_username = Column(String(100), nullable=True)
+    access_token = Column(Text, nullable=False)
+    token_hash = Column(String(128), nullable=False, index=True)
+    status = Column(String(30), default="connected", nullable=False)
+    is_active = Column(Boolean, default=False, nullable=False)
+    last_validated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class MonitoredPost(Base):
     __tablename__ = "monitored_posts"
@@ -554,16 +576,20 @@ def init_db():
             {"key": "working_hours_start", "value": "08:00"},
             {"key": "working_hours_end", "value": "22:00"},
             {"key": "status", "value": "stopped"}, # running, stopped
-            {"key": "api_mode", "value": "sandbox"}, # sandbox, official
             {"key": "opt_out_keywords", "value": "stop, unsubscribe, optout, stopdm"},
             {"key": "consent_enforce", "value": "true"},
-            {"key": "meta_page_access_token", "value": ""},
-            {"key": "meta_verify_token", "value": ""}
         ]
         for s in default_settings:
             exists = db.query(Setting).filter(Setting.key == s["key"]).first()
             if not exists:
                 db.add(Setting(key=s["key"], value=s["value"]))
+        # Remove the pre-SaaS global credential rows. Official connections are
+        # now encrypted and isolated in meta_connections per workspace.
+        db.query(Setting).filter(Setting.key.in_([
+            "api_mode",
+            "meta_page_access_token",
+            "meta_verify_token",
+        ])).delete(synchronize_session=False)
         db.commit()
 
         # Seed default admin user

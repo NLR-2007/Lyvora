@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
-import { apiFetch, getApiUrl } from "../api";
-import { Play, Square, RefreshCw, Send, AlertTriangle, CheckCircle, Clock, Loader2, TrendingUp, Users, FileText, UserCheck, Coins } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { apiFetch } from "../api";
+import { Play, Square, RefreshCw, AlertTriangle, Clock, Loader2, TrendingUp, FileText, UserCheck, Coins } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function Dashboard() {
   const [status, setStatus] = useState({
@@ -15,14 +15,12 @@ export default function Dashboard() {
     total_sent: 0,
   });
   const [logs, setLogs] = useState([]);
-  const [targetInput, setTargetInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsDays, setAnalyticsDays] = useState(30);
   const logConsoleRef = useRef(null);
 
-  const fetchStatusAndLogs = async () => {
+  const fetchStatusAndLogs = useCallback(async () => {
     try {
       const statusData = await apiFetch("/api/status");
       setStatus(statusData);
@@ -32,27 +30,26 @@ export default function Dashboard() {
     } catch (e) {
       console.error("Failed to load status/logs:", e);
     }
-  };
+  }, []);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
       const data = await apiFetch(`/api/analytics/dashboard?days=${analyticsDays}`);
       setAnalytics(data);
     } catch (e) {
       console.error("Failed to load analytics:", e);
     }
-  };
+  }, [analyticsDays]);
 
   useEffect(() => {
     fetchStatusAndLogs();
-    fetchAnalytics();
     const interval = setInterval(fetchStatusAndLogs, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatusAndLogs]);
 
   useEffect(() => {
     fetchAnalytics();
-  }, [analyticsDays]);
+  }, [fetchAnalytics]);
 
   useEffect(() => {
     if (logConsoleRef.current) {
@@ -81,25 +78,6 @@ export default function Dashboard() {
       alert(e.message || "Failed to stop bot.");
     } finally {
       setActionLoading(false);
-    }
-  };
-
-  const handleQuickAdd = async (e) => {
-    e.preventDefault();
-    if (!targetInput.trim()) return;
-    setLoading(true);
-    try {
-      const handles = targetInput.split(/[,\n]+/).map(h => h.trim()).filter(Boolean);
-      await apiFetch("/api/targets", {
-        method: "POST",
-        body: JSON.stringify({ usernames: handles }),
-      });
-      setTargetInput("");
-      await fetchStatusAndLogs();
-    } catch (e) {
-      alert(e.message || "Failed to add targets.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -193,11 +171,6 @@ export default function Dashboard() {
           <div className="stat-label">Failed</div>
           <div className="stat-value">{analytics?.total_failed ?? status.failed_count}</div>
         </div>
-        <div className="glass-card stat-card tone-green">
-          <div className="stat-icon" style={{ color: "var(--success)" }}><Users size={20} /></div>
-          <div className="stat-label">Contacts</div>
-          <div className="stat-value">{analytics?.total_contacts ?? 0}</div>
-        </div>
         <div className="glass-card stat-card tone-violet">
           <div className="stat-icon" style={{ color: "#8b5cf6" }}><FileText size={20} /></div>
           <div className="stat-label">Templates</div>
@@ -219,7 +192,7 @@ export default function Dashboard() {
       </div>
 
       {/* Content Columns */}
-      <div className="content-grid cols-2-wider">
+      <div className="content-grid">
         {/* Analytics Chart */}
         <div className="glass-card" style={{ height: "420px", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -268,34 +241,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Quick Add Form */}
-        <div className="glass-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-          <div>
-            <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>Enqueue Target Handles</h3>
-            <p style={{ color: "var(--text-secondary)", fontSize: "13px", marginBottom: "20px" }}>
-              Add Instagram usernames to the automation queue. Separate multiple names by commas or line breaks.
-            </p>
-            <form onSubmit={handleQuickAdd}>
-              <div className="form-group">
-                <textarea
-                  className="form-textarea"
-                  style={{ height: "150px" }}
-                  placeholder="e.g. john_doe, travel_nomad, fitness_guru"
-                  value={targetInput}
-                  onChange={(e) => setTargetInput(e.target.value)}
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: "100%" }}
-                disabled={loading}
-              >
-                <Send size={16} /> Enqueue Targets
-              </button>
-            </form>
-          </div>
-        </div>
       </div>
 
       {/* Real-time Logs Console */}

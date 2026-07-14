@@ -1,11 +1,12 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Play } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
+import heroPoster from "../assets/hero.png";
 
 export default function LandingPage({ onGetStarted, onNavigateLegal }) {
   return (
-    <div className="h-screen w-full flex flex-col bg-background overflow-hidden relative font-body text-foreground">
+    <div className="min-h-[100dvh] w-full flex flex-col bg-background overflow-x-hidden relative font-body text-foreground">
       {/* Background Video */}
       <video
         src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4"
@@ -13,6 +14,8 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
         loop
         muted
         playsInline
+        preload="metadata"
+        poster={heroPoster}
         className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
       />
       {/* Light soft background overlay to blend video with light theme */}
@@ -46,7 +49,7 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
           transition={{ duration: 0.5 }}
           className="inline-flex flex-col items-center gap-0.5 rounded-2xl border border-border bg-background px-5 py-2 font-body mb-6 shadow-sm"
         >
-          <span className="font-semibold text-foreground text-xs">Future with Sophie Support ✨</span>
+          <span className="font-semibold text-foreground text-xs">Automation built for focused teams</span>
           <span className="text-[9px] text-muted-foreground/80">powered by NLR GROUP OF COMPANIES</span>
         </motion.div>
 
@@ -55,7 +58,7 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-center font-display text-5xl md:text-6xl lg:text-[5rem] leading-[0.95] tracking-tight text-foreground max-w-2xl font-normal"
+          className="text-center font-display text-4xl sm:text-5xl md:text-6xl lg:text-[5rem] leading-[0.95] tracking-tight text-foreground max-w-2xl font-normal"
         >
           The Future of <span className="italic font-display font-normal text-accent">Smarter</span> Automation
         </motion.h1>
@@ -87,14 +90,20 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
           <button
             onClick={onGetStarted}
             className="flex items-center justify-center h-11 w-11 rounded-full border-0 bg-background shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-background/80 transition-colors"
-            aria-label="Play video"
+            aria-label="Get started"
           >
-            <Play className="h-4 w-4 fill-foreground text-foreground" />
+            <ArrowRight className="h-4 w-4 text-foreground" />
           </button>
         </motion.div>
 
 
       </section>
+
+      <footer className="relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-6 py-4 text-xs text-muted-foreground font-body">
+        <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("privacy")}>Privacy</button>
+        <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("terms")}>Terms</button>
+        <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("disclaimer")}>Disclaimer</button>
+      </footer>
     </div>
   );
 }

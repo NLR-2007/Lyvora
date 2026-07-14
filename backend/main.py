@@ -2,22 +2,23 @@ import os
 import json
 from contextlib import asynccontextmanager
 from typing import List, Optional, Union, Dict
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 import threading
 import asyncio
 import secrets
 import time
+import httpx
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.config import cors_origins, cors_origin_regex, validate_runtime_config
-from backend.database import get_db, init_db, Account, Target, MessageTemplate, BotLog, Setting, log_to_db, SessionLocal, MonitoredPost, ProcessedComment, OptOut, User, TgBotConfig, TgChannel, TgMessageTemplate, TgScheduledPost, TgModerationRule, TgPostLog, Workspace, WorkspaceMember, Subscription, Campaign, AutomationRunner, AuditLog, Notification, MediaFile, Contact, FeatureFlag
+from backend.config import cors_origins, cors_origin_regex, validate_runtime_config, settings
+from backend.database import get_db, init_db, Account, Target, MessageTemplate, BotLog, Setting, MetaConnection, log_to_db, SessionLocal, MonitoredPost, ProcessedComment, OptOut, User, TgBotConfig, TgChannel, TgMessageTemplate, TgScheduledPost, TgModerationRule, TgPostLog, Workspace, WorkspaceMember, Subscription, Campaign, AutomationRunner, AuditLog, Notification, MediaFile, Contact, FeatureFlag
 from backend.schemas import (
     UserRegisterSchema, UserLoginSchema, TokenResponse, UserResponseSchema,
     AccountSchema, AccountResponse, MonitoredPostCreate, MonitoredPostResponse,
-    TargetCreateSchema, TargetResponse, MessageTemplateSchema, MessageTemplateResponse,
+    TargetCreateSchema, TargetResponse, MessageTemplateSchema, MessageTemplateUpdateSchema, MessageTemplateResponse,
     AdminUserDetailResponse, AdminSystemStatsResponse,
     TgBotConfigCreate, TgScheduledPostCreate, TgScheduledPostUpdate, TgModerationRuleCreate,
     NotificationResponse, MediaFileResponse,
@@ -32,7 +33,7 @@ from backend.auth import (
 from backend.security import encrypt_secret, decrypt_secret, mask_secret, secret_configured, stable_hash
 import re
 import backend.bot as bot_module
-from backend.bot import start_bot_background, stop_bot_background, InstagramBot
+from backend.bot import start_bot_background, stop_bot_background, InstagramBot, create_browser_event_loop
 from backend.official_api import router as official_api_router
 from backend.telegram_service import telegram_service
 
@@ -95,8 +96,11 @@ class SettingUpdateSchema(BaseModel):
     api_mode: str = Field(default="sandbox")
     opt_out_keywords: str = Field(default="stop, unsubscribe, optout, stopdm")
     consent_enforce: bool = Field(default=True)
-    meta_page_access_token: Optional[str] = Field(default="")
-    meta_verify_token: Optional[str] = Field(default="")
+
+
+class MetaConnectionCreateSchema(BaseModel):
+    instagram_user_id: str = Field(..., min_length=3, max_length=100, pattern=r"^\d+$")
+    access_token: str = Field(..., min_length=20, max_length=4096)
 
 class OptOutCreateSchema(BaseModel):
     username: str = Field(..., min_length=1, max_length=100)
@@ -256,14 +260,19 @@ def audit(db: Session, action: str, user: Optional[User] = None, workspace: Opti
 
 
 def check_login_rate_limit(username: str):
+    """Reject a username only after too many recent failed logins."""
     now = time.time()
     window_start = now - 900
     key = username.lower()
     attempts = [ts for ts in LOGIN_ATTEMPTS.get(key, []) if ts >= window_start]
+    LOGIN_ATTEMPTS[key] = attempts
     if len(attempts) >= 8:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
-    attempts.append(now)
-    LOGIN_ATTEMPTS[key] = attempts
+
+
+def record_failed_login(username: str):
+    key = username.lower()
+    LOGIN_ATTEMPTS.setdefault(key, []).append(time.time())
 
 
 def clear_login_rate_limit(username: str):
@@ -311,6 +320,7 @@ def login_user(payload: UserLoginSchema, db: Session = Depends(get_db)):
     check_login_rate_limit(payload.username)
     user = db.query(User).filter(User.username == payload.username).first()
     if not user or not verify_password(payload.password, user.password_hash):
+        record_failed_login(payload.username)
         raise HTTPException(status_code=400, detail="Incorrect username or password.")
     if not getattr(user, "is_enabled", True):
         raise HTTPException(status_code=403, detail="This account is disabled.")
@@ -654,23 +664,46 @@ def delete_account(username: str, current_user: User = Depends(get_current_user)
     return {"message": f"Account @{username} successfully removed."}
 
 # Verification & login routines
-def run_login_worker(username: str):
-    bot = InstagramBot(username)
-    loop = asyncio.new_event_loop()
+_account_auth_jobs = set()
+_account_auth_jobs_lock = threading.Lock()
+
+def claim_account_auth_job(account_id: int) -> bool:
+    with _account_auth_jobs_lock:
+        if account_id in _account_auth_jobs:
+            return False
+        _account_auth_jobs.add(account_id)
+        return True
+
+def release_account_auth_job(account_id: int) -> None:
+    with _account_auth_jobs_lock:
+        _account_auth_jobs.discard(account_id)
+
+def run_login_worker(account_id: int, username: str, proxy_config: Optional[dict] = None):
+    bot = InstagramBot(username, proxy=proxy_config)
+    loop = create_browser_event_loop()
     asyncio.set_event_loop(loop)
     try:
         success = loop.run_until_complete(bot.run_manual_login_session())
         db = SessionLocal()
         try:
-            account = db.query(Account).filter(Account.username == username).first()
+            account = db.query(Account).filter(Account.id == account_id).first()
             if account:
                 account.status = "connected" if success else "disconnected"
                 db.commit()
         finally:
             db.close()
-    except Exception as e:
-        log_to_db("ERROR", f"Manual login worker failed: {e}")
+    except BaseException as e:
+        log_to_db("ERROR", f"Manual login worker failed for @{username}: {type(e).__name__}: {e!r}")
+        db = SessionLocal()
+        try:
+            account = db.query(Account).filter(Account.id == account_id).first()
+            if account:
+                account.status = "authentication_error"
+                db.commit()
+        finally:
+            db.close()
     finally:
+        release_account_auth_job(account_id)
         loop.close()
 
 @app.post("/api/accounts/{username}/login")
@@ -688,9 +721,22 @@ def trigger_manual_login(
     ).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found.")
-    account.status = "connecting"
-    db.commit()
-    background_tasks.add_task(run_login_worker, username)
+    if not claim_account_auth_job(account.id):
+        raise HTTPException(status_code=409, detail="Authentication or verification is already running for this account. Please wait for it to finish.")
+
+    proxy_config = None
+    if account.proxy_host and account.proxy_port:
+        proxy_config = {"server": f"http://{account.proxy_host}:{account.proxy_port}"}
+        if account.proxy_username and account.proxy_password:
+            proxy_config["username"] = account.proxy_username
+            proxy_config["password"] = decrypt_secret(account.proxy_password)
+    try:
+        account.status = "connecting"
+        db.commit()
+        background_tasks.add_task(run_login_worker, account.id, username, proxy_config)
+    except Exception:
+        release_account_auth_job(account.id)
+        raise
     return {"message": "Visible browser window launched on host. Please log in manually."}
 
 @app.post("/api/accounts/{username}/mark-connected", deprecated=True)
@@ -709,6 +755,8 @@ def verify_account_session(
     ).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found.")
+    if not claim_account_auth_job(account.id):
+        raise HTTPException(status_code=409, detail="Authentication or verification is already running for this account. Please wait for it to finish.")
 
     proxy_config = None
     if account.proxy_host and account.proxy_port:
@@ -717,21 +765,27 @@ def verify_account_session(
             proxy_config["username"] = account.proxy_username
             proxy_config["password"] = decrypt_secret(account.proxy_password)
 
-    account.status = "connecting"
-    db.commit()
-    background_tasks.add_task(run_verification_worker, account.id, username, proxy_config)
+    try:
+        account.status = "connecting"
+        db.commit()
+        background_tasks.add_task(run_verification_worker, account.id, username, proxy_config)
+    except Exception:
+        release_account_auth_job(account.id)
+        raise
     return {"status": "connecting", "message": f"Session verification started for @{username}."}
 
 def run_verification_worker(account_id: int, username: str, proxy_config: Optional[dict] = None):
     bot = InstagramBot(username, proxy=proxy_config)
-    loop = asyncio.new_event_loop()
+    loop = create_browser_event_loop()
     asyncio.set_event_loop(loop)
     is_logged = False
+    verification_error = None
     try:
-        loop.run_until_complete(bot.init_browser(headless=True))
+        loop.run_until_complete(bot.init_browser(headless=True, persistent=False))
         is_logged = bool(loop.run_until_complete(bot.check_login_status()))
-    except Exception as e:
-        log_to_db("ERROR", f"Instagram session verification failed for @{username}: {e}")
+    except BaseException as e:
+        verification_error = e
+        log_to_db("ERROR", f"Instagram session verification failed for @{username}: {type(e).__name__}: {e!r}")
     finally:
         try:
             loop.run_until_complete(bot.close_browser())
@@ -742,13 +796,14 @@ def run_verification_worker(account_id: int, username: str, proxy_config: Option
         try:
             account = db.query(Account).filter(Account.id == account_id).first()
             if account:
-                account.status = "connected" if is_logged else "verification_needed"
+                account.status = "authentication_error" if verification_error else ("connected" if is_logged else "verification_needed")
                 db.commit()
                 level = "SUCCESS" if is_logged else "WARNING"
-                result = "verified" if is_logged else "not authenticated"
+                result = "verified" if is_logged else ("could not be checked" if verification_error else "not authenticated")
                 log_to_db(level, f"Instagram session for @{username} is {result}.")
         finally:
             db.close()
+        release_account_auth_job(account_id)
         loop.close()
 
 @app.post("/api/accounts/{username}/session")
@@ -772,25 +827,37 @@ async def save_session_cookies(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid cookie session JSON payload structure.")
 
-    user_data_path = os.path.abspath(os.path.join(settings.USER_DATA_DIR, username))
-    os.makedirs(user_data_path, exist_ok=True)
-    storage_state_file = os.path.join(user_data_path, "storage_state.json")
-    with open(storage_state_file, "w", encoding="utf-8") as f:
-        json.dump(normalized, f, indent=2)
+    cookie_names = {cookie["name"] for cookie in normalized["cookies"]}
+    missing_required = {"sessionid", "ds_user_id"} - cookie_names
+    if missing_required:
+        missing = ", ".join(sorted(missing_required))
+        raise HTTPException(status_code=400, detail=f"The JSON is not a logged-in Instagram session. Missing required cookie(s): {missing}.")
+    if not claim_account_auth_job(account.id):
+        raise HTTPException(status_code=409, detail="Authentication or verification is already running for this account. Please wait for it to finish.")
 
-    account.status = "connecting"
-    db.commit()
-    
-    proxy_config = None
-    if account.proxy_host and account.proxy_port:
-        proxy_config = {
-            "server": f"http://{account.proxy_host}:{account.proxy_port}"
-        }
-        if account.proxy_username and account.proxy_password:
-            proxy_config["username"] = account.proxy_username
-            proxy_config["password"] = decrypt_secret(account.proxy_password)
+    try:
+        user_data_path = os.path.abspath(os.path.join(settings.USER_DATA_DIR, username))
+        os.makedirs(user_data_path, exist_ok=True)
+        storage_state_file = os.path.join(user_data_path, "storage_state.json")
+        with open(storage_state_file, "w", encoding="utf-8") as f:
+            json.dump(normalized, f, indent=2)
 
-    background_tasks.add_task(run_verification_worker, account.id, username, proxy_config)
+        account.status = "connecting"
+        db.commit()
+
+        proxy_config = None
+        if account.proxy_host and account.proxy_port:
+            proxy_config = {
+                "server": f"http://{account.proxy_host}:{account.proxy_port}"
+            }
+            if account.proxy_username and account.proxy_password:
+                proxy_config["username"] = account.proxy_username
+                proxy_config["password"] = decrypt_secret(account.proxy_password)
+
+        background_tasks.add_task(run_verification_worker, account.id, username, proxy_config)
+    except Exception:
+        release_account_auth_job(account.id)
+        raise
     return {"status": "connecting", "message": "Cookies imported successfully. Triggering validation..."}
 
 def normalize_cookies_to_storage_state(cookie_data) -> dict:
@@ -813,7 +880,18 @@ def normalize_cookies_to_storage_state(cookie_data) -> dict:
         path = rc.get("path", "/")
         if not name or not value or not domain:
             continue
+        normalized_domain = str(domain).lower().lstrip(".")
+        if normalized_domain != "instagram.com" and not normalized_domain.endswith(".instagram.com"):
+            continue
             
+        same_site_value = str(rc.get("sameSite", rc.get("same_site", "Lax"))).lower()
+        same_site = {
+            "strict": "Strict",
+            "lax": "Lax",
+            "none": "None",
+            "no_restriction": "None",
+            "unspecified": "Lax",
+        }.get(same_site_value, "Lax")
         cookie = {
             "name": name,
             "value": value,
@@ -821,8 +899,16 @@ def normalize_cookies_to_storage_state(cookie_data) -> dict:
             "path": path,
             "httpOnly": rc.get("httpOnly", rc.get("http_only", True)),
             "secure": rc.get("secure", True),
-            "sameSite": "Lax"
+            "sameSite": same_site
         }
+        expires = rc.get("expires", rc.get("expirationDate"))
+        if isinstance(expires, str):
+            try:
+                expires = float(expires)
+            except ValueError:
+                expires = None
+        if isinstance(expires, (int, float)) and expires > 0:
+            cookie["expires"] = expires
         cookies.append(cookie)
         
     return {"cookies": cookies, "origins": origins}
@@ -945,6 +1031,18 @@ def toggle_message_status(id: int, current_user: User = Depends(get_current_user
     db.commit()
     return tpl
 
+@app.put("/api/messages/{id}", response_model=MessageTemplateResponse)
+def update_message(id: int, payload: MessageTemplateUpdateSchema, current_user: User = Depends(get_current_user), workspace: Workspace = Depends(require_workspace_role("owner", "admin", "member")), db: Session = Depends(get_db)):
+    tpl = db.query(MessageTemplate).filter(MessageTemplate.id == id, MessageTemplate.user_id == current_user.id, MessageTemplate.workspace_id == workspace.id).first()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found.")
+    tpl.name = payload.name.strip()
+    tpl.content = payload.content.strip()
+    audit(db, "template.updated", current_user, workspace, "message_template", tpl.id)
+    db.commit()
+    db.refresh(tpl)
+    return tpl
+
 @app.delete("/api/messages/{id}")
 def delete_message(id: int, current_user: User = Depends(get_current_user), workspace: Workspace = Depends(require_workspace_role("owner", "admin", "member")), db: Session = Depends(get_db)):
     tpl = db.query(MessageTemplate).filter(MessageTemplate.id == id, MessageTemplate.user_id == current_user.id, MessageTemplate.workspace_id == workspace.id).first()
@@ -1055,35 +1153,78 @@ def delete_optout(id: int, current_user: User = Depends(get_current_user), works
 
 # Settings Control
 @app.get("/api/settings")
-def get_settings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_settings(
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+):
     settings_dict = {}
-    secret_keys = {"meta_page_access_token", "meta_verify_token"}
     rows = db.query(Setting).all()
     for row in rows:
-        if row.key in secret_keys:
-            settings_dict[row.key] = ""
-            settings_dict[f"{row.key}_configured"] = secret_configured(row.value)
-            settings_dict[f"{row.key}_masked"] = mask_secret(row.value)
-        else:
+        if row.key not in {"meta_page_access_token", "meta_verify_token", "api_mode"}:
             settings_dict[row.key] = row.value
+    connection = db.query(MetaConnection).filter(MetaConnection.workspace_id == workspace.id).first()
+    settings_dict["api_mode"] = "official" if connection and connection.is_active else "sandbox"
+    settings_dict["meta_connection_configured"] = bool(connection and secret_configured(connection.access_token))
+    settings_dict["meta_connection_active"] = bool(connection and connection.is_active)
+    settings_dict["meta_connection_status"] = connection.status if connection else "not_connected"
+    settings_dict["meta_instagram_user_id"] = connection.instagram_user_id if connection else ""
+    settings_dict["meta_instagram_username"] = connection.instagram_username if connection else ""
+    settings_dict["meta_access_token_masked"] = mask_secret(connection.access_token) if connection else ""
+    settings_dict["meta_app_id_configured"] = bool(settings.META_APP_ID.strip())
+    settings_dict["meta_app_secret_configured"] = bool(settings.META_APP_SECRET.strip())
+    settings_dict["meta_webhook_verify_token_configured"] = bool(settings.META_WEBHOOK_VERIFY_TOKEN.strip())
+    settings_dict["meta_platform_configured"] = bool(
+        settings.META_APP_SECRET.strip() and settings.META_WEBHOOK_VERIFY_TOKEN.strip()
+    )
     return settings_dict
 
 @app.post("/api/settings")
-def update_settings(payload: SettingUpdateSchema, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_settings(
+    payload: SettingUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(require_workspace_role("owner", "admin", "member")),
+    db: Session = Depends(get_db),
+):
+    if payload.max_delay < payload.min_delay:
+        raise HTTPException(status_code=400, detail="Max delay must be greater than or equal to min delay.")
+    try:
+        datetime.strptime(payload.working_hours_start, "%H:%M")
+        datetime.strptime(payload.working_hours_end, "%H:%M")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Working hours must use HH:MM format.")
+    if payload.api_mode not in {"sandbox", "official"}:
+        raise HTTPException(status_code=400, detail="Invalid messaging engine mode.")
+    if not payload.consent_enforce:
+        raise HTTPException(status_code=400, detail="Exact comment-keyword consent must remain enabled for safe automation.")
+
+    opt_out_keywords = []
+    for keyword in payload.opt_out_keywords.split(","):
+        normalized = keyword.strip().casefold()
+        if normalized and normalized not in opt_out_keywords:
+            opt_out_keywords.append(normalized)
+    if not opt_out_keywords:
+        raise HTTPException(status_code=400, detail="Add at least one opt-out keyword.")
+
+    connection = db.query(MetaConnection).filter(MetaConnection.workspace_id == workspace.id).first()
+    if payload.api_mode == "official":
+        if not settings.META_APP_SECRET.strip() or not settings.META_WEBHOOK_VERIFY_TOKEN.strip():
+            raise HTTPException(status_code=400, detail="The Lyvora Meta app is not ready on the backend yet.")
+        if not connection or connection.status != "connected" or not secret_configured(connection.access_token):
+            raise HTTPException(status_code=400, detail="Connect and validate your Instagram access token before enabling Official Meta mode.")
+        connection.is_active = True
+    elif connection:
+        connection.is_active = False
+
     items = {
         "daily_limit": str(payload.daily_limit),
         "min_delay": str(payload.min_delay),
         "max_delay": str(payload.max_delay),
         "working_hours_start": payload.working_hours_start,
         "working_hours_end": payload.working_hours_end,
-        "api_mode": payload.api_mode,
-        "opt_out_keywords": payload.opt_out_keywords,
-        "consent_enforce": "true" if payload.consent_enforce else "false",
+        "opt_out_keywords": ", ".join(opt_out_keywords),
+        "consent_enforce": "true",
     }
-    if payload.meta_page_access_token:
-        items["meta_page_access_token"] = encrypt_secret(payload.meta_page_access_token)
-    if payload.meta_verify_token:
-        items["meta_verify_token"] = encrypt_secret(payload.meta_verify_token)
     for k, v in items.items():
         row = db.query(Setting).filter(Setting.key == k).first()
         if row:
@@ -1093,6 +1234,100 @@ def update_settings(payload: SettingUpdateSchema, current_user: User = Depends(g
     db.commit()
     log_to_db("INFO", f"User '{current_user.username}' updated bot settings.")
     return {"message": "Settings saved successfully."}
+
+
+@app.get("/api/meta/connection")
+def get_meta_connection(
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+):
+    connection = db.query(MetaConnection).filter(MetaConnection.workspace_id == workspace.id).first()
+    if not connection:
+        return {"connected": False, "active": False, "status": "not_connected"}
+    return {
+        "connected": secret_configured(connection.access_token),
+        "active": connection.is_active,
+        "status": connection.status,
+        "instagram_user_id": connection.instagram_user_id,
+        "instagram_username": connection.instagram_username,
+        "access_token_masked": mask_secret(connection.access_token),
+        "last_validated_at": connection.last_validated_at,
+    }
+
+
+@app.post("/api/meta/connection")
+async def save_meta_connection(
+    payload: MetaConnectionCreateSchema,
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(require_workspace_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Validate a tenant token with Meta, then persist only its encrypted form."""
+    version = settings.META_GRAPH_API_VERSION.strip() or "v23.0"
+    url = f"https://graph.instagram.com/{version}/{payload.instagram_user_id}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                url,
+                params={"fields": "id,username"},
+                headers={"Authorization": f"Bearer {payload.access_token}"},
+            )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not reach Meta to validate this connection. Try again shortly.")
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Meta rejected this token. Check the token, account ID, permissions, and expiry.")
+    profile = response.json()
+    returned_id = str(profile.get("id") or "")
+    if returned_id != payload.instagram_user_id:
+        raise HTTPException(status_code=400, detail="This token belongs to a different Instagram account ID.")
+
+    duplicate = db.query(MetaConnection).filter(
+        MetaConnection.instagram_user_id == payload.instagram_user_id,
+        MetaConnection.workspace_id != workspace.id,
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=409, detail="This Instagram account is already connected to another workspace.")
+
+    connection = db.query(MetaConnection).filter(MetaConnection.workspace_id == workspace.id).first()
+    if not connection:
+        connection = MetaConnection(workspace_id=workspace.id)
+        db.add(connection)
+    connection.connected_by_user_id = current_user.id
+    connection.instagram_user_id = payload.instagram_user_id
+    connection.instagram_username = (profile.get("username") or "").strip() or None
+    connection.access_token = encrypt_secret(payload.access_token)
+    connection.token_hash = stable_hash(payload.access_token)
+    connection.status = "connected"
+    connection.last_validated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(connection)
+    log_to_db("INFO", f"User '{current_user.username}' connected an official Meta account for workspace {workspace.id}.")
+    return {
+        "connected": True,
+        "active": connection.is_active,
+        "status": connection.status,
+        "instagram_user_id": connection.instagram_user_id,
+        "instagram_username": connection.instagram_username,
+        "access_token_masked": mask_secret(connection.access_token),
+        "last_validated_at": connection.last_validated_at,
+    }
+
+
+@app.delete("/api/meta/connection")
+def delete_meta_connection(
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(require_workspace_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    connection = db.query(MetaConnection).filter(MetaConnection.workspace_id == workspace.id).first()
+    if not connection:
+        raise HTTPException(status_code=404, detail="No Meta connection was found for this workspace.")
+    db.delete(connection)
+    db.commit()
+    log_to_db("INFO", f"User '{current_user.username}' disconnected the official Meta account for workspace {workspace.id}.")
+    return {"message": "Meta account disconnected and its stored token was removed."}
 
 @app.get("/api/logs", response_model=List[LogResponse])
 def get_logs(limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1564,6 +1799,12 @@ def tg_schedule_post(req: TgScheduledPostCreate, current_user: User = Depends(ge
     if not (req.content or "").strip() and not req.media_path:
         raise HTTPException(400, "Add message text or an attachment")
 
+    scheduled_at = req.scheduled_at
+    if scheduled_at.tzinfo is not None:
+        scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+    if scheduled_at <= datetime.utcnow():
+        raise HTTPException(400, "Schedule time must be in the future")
+
     batch_json = None
     if req.batch_messages:
         batch_json = json.dumps(req.batch_messages)
@@ -1573,7 +1814,7 @@ def tg_schedule_post(req: TgScheduledPostCreate, current_user: User = Depends(ge
         message_type=req.message_type or "text",
         media_type=req.media_type,
         media_path=req.media_path,
-        scheduled_at=req.scheduled_at,
+        scheduled_at=scheduled_at,
         is_recurring=req.is_recurring,
         recurrence_rule=req.recurrence_rule,
         batch_messages=batch_json,
@@ -1582,8 +1823,7 @@ def tg_schedule_post(req: TgScheduledPostCreate, current_user: User = Depends(ge
     db.add(post)
     db.commit()
     db.refresh(post)
-    from datetime import timedelta
-    ist_time = req.scheduled_at + timedelta(hours=5, minutes=30)
+    ist_time = scheduled_at + timedelta(hours=5, minutes=30)
     msg_label = "batch" if req.batch_messages else req.message_type or "text"
     log_to_db("INFO", f"[TG] {msg_label} scheduled for {channel.title} at {ist_time.strftime('%Y-%m-%d %H:%M:%S')} IST")
     return {"id": post.id, "status": post.status, "scheduled_at": post.scheduled_at.isoformat()}
@@ -1656,7 +1896,12 @@ def tg_update_post(post_id: int, req: TgScheduledPostUpdate, current_user: User 
     if req.content is not None:
         post.content = req.content
     if req.scheduled_at is not None:
-        post.scheduled_at = req.scheduled_at
+        scheduled_at = req.scheduled_at
+        if scheduled_at.tzinfo is not None:
+            scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        if scheduled_at <= datetime.utcnow():
+            raise HTTPException(400, "Schedule time must be in the future")
+        post.scheduled_at = scheduled_at
     if req.message_type is not None:
         post.message_type = req.message_type
     if req.media_type is not None:

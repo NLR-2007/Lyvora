@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     # Security
     API_SECRET_KEY: str = Field(default="insta-dm-secret-key-12345")
     ENCRYPTION_KEY: str = Field(default="")
+    META_APP_ID: str = Field(default="")
     META_APP_SECRET: str = Field(default="")
+    META_WEBHOOK_VERIFY_TOKEN: str = Field(default="")
+    META_GRAPH_API_VERSION: str = Field(default="v23.0")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24)
 
     # SaaS defaults

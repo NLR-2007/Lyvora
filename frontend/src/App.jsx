@@ -1,28 +1,27 @@
-import React, { useState, useEffect } from "react";
-import Dashboard from "./components/Dashboard";
-import Accounts from "./components/Accounts";
-import Targets from "./components/Targets";
-import Messages from "./components/Messages";
-import Settings from "./components/Settings";
-import CommentTriggers from "./components/CommentTriggers";
-import AdminPanel from "./components/AdminPanel";
+import React, { lazy, Suspense, useState, useEffect } from "react";
 import AuthPage from "./components/AuthPage";
-import TelegramPanel from "./components/TelegramPanel";
-import MediaLibrary from "./components/MediaLibrary";
-import NotificationCenter from "./components/NotificationCenter";
-import ContactCRM from "./components/ContactCRM";
-import ContentCalendar from "./components/ContentCalendar";
 import LandingPage from "./components/LandingPage";
 import LegalPrivacy from "./components/LegalPrivacy";
 import TermsConditions from "./components/TermsConditions";
 import LegalDisclaimer from "./components/LegalDisclaimer";
 import {
-  LayoutDashboard, UserCheck, Users, Mail,
+  LayoutDashboard, UserCheck, Mail,
   Settings as SettingsIcon, MessageSquare, Menu, X,
   Shield, LogOut, ChevronDown, Send,
-  Image, Bell, Calendar, Contact, Sparkles, Wifi, WifiOff
+  Image, Bell, Calendar, ChevronRight, Wifi, WifiOff, LoaderCircle
 } from "lucide-react";
 import { getToken, getAuthUser, logout, apiFetch, getApiUrl, setApiUrl } from "./api";
+
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const Accounts = lazy(() => import("./components/Accounts"));
+const Messages = lazy(() => import("./components/Messages"));
+const Settings = lazy(() => import("./components/Settings"));
+const CommentTriggers = lazy(() => import("./components/CommentTriggers"));
+const AdminPanel = lazy(() => import("./components/AdminPanel"));
+const TelegramPanel = lazy(() => import("./components/TelegramPanel"));
+const MediaLibrary = lazy(() => import("./components/MediaLibrary"));
+const NotificationCenter = lazy(() => import("./components/NotificationCenter"));
+const ContentCalendar = lazy(() => import("./components/ContentCalendar"));
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -30,6 +29,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("checking");
+  const [telegramInitialTab, setTelegramInitialTab] = useState("bots");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [legalPage, setLegalPage] = useState(null);
@@ -44,6 +44,23 @@ export default function App() {
       verifyConnection();
     }
   }, []);
+
+  useEffect(() => {
+    if (!sidebarOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sidebarOpen]);
 
   const verifyConnection = async () => {
     setConnectionStatus("checking");
@@ -90,37 +107,51 @@ export default function App() {
   }
 
   // ── Nav items ────────────────────────────────────────────────────────────────
-  const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "accounts", label: "IG Accounts", icon: UserCheck },
-    { id: "targets", label: "Targets Queue", icon: Users },
-    { id: "messages", label: "DM Templates", icon: Mail },
-    { id: "comment-triggers", label: "Comment Triggers", icon: MessageSquare },
-    { id: "contacts", label: "Contacts", icon: Contact },
-    { id: "media", label: "Media Library", icon: Image },
-    { id: "calendar", label: "Content Calendar", icon: Calendar },
-    { id: "notifications", label: "Notifications", icon: Bell },
-    { id: "telegram", label: "Telegram", icon: Send, isTelegram: true },
-    { id: "settings", label: "Settings", icon: SettingsIcon },
-    ...(currentUser?.is_admin
-      ? [
-          { id: "admin", label: "Admin Panel", icon: Shield, isAdmin: true },
-        ]
-      : []),
+  const navSections = [
+    {
+      label: "Overview",
+      items: [
+        { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { id: "notifications", label: "Notifications", icon: Bell },
+      ],
+    },
+    {
+      label: "Instagram",
+      items: [
+        { id: "accounts", label: "Accounts", icon: UserCheck },
+        { id: "messages", label: "DM Templates", icon: Mail },
+        { id: "comment-triggers", label: "Comment Triggers", icon: MessageSquare },
+      ],
+    },
+    {
+      label: "Content",
+      items: [
+        { id: "media", label: "Media Library", icon: Image },
+        { id: "calendar", label: "Content Calendar", icon: Calendar },
+        { id: "telegram", label: "Telegram", icon: Send, isTelegram: true },
+      ],
+    },
+    {
+      label: "Workspace",
+      items: [
+        { id: "settings", label: "Settings", icon: SettingsIcon },
+        ...(currentUser?.is_admin
+          ? [{ id: "admin", label: "Admin Console", icon: Shield, isAdmin: true }]
+          : []),
+      ],
+    },
   ];
 
   const renderActiveComponent = () => {
     switch (activeTab) {
       case "dashboard":        return <Dashboard />;
       case "accounts":         return <Accounts />;
-      case "targets":          return <Targets />;
       case "messages":         return <Messages />;
       case "comment-triggers": return <CommentTriggers />;
-      case "contacts":         return <ContactCRM />;
       case "media":            return <MediaLibrary />;
-      case "calendar":         return <ContentCalendar />;
+      case "calendar":         return <ContentCalendar onCreateSchedule={() => { setTelegramInitialTab("schedule"); handleNavClick("telegram"); }} />;
       case "notifications":    return <NotificationCenter />;
-      case "telegram":         return <TelegramPanel />;
+      case "telegram":         return <TelegramPanel initialTab={telegramInitialTab} />;
       case "settings":         return <Settings />;
       case "admin":            return currentUser?.is_admin ? <AdminPanel /> : <Dashboard />;
       default:                 return <Dashboard />;
@@ -131,10 +162,8 @@ export default function App() {
     const map = {
       dashboard: "Dashboard",
       accounts: "Instagram Accounts",
-      targets: "Targets Queue",
       messages: "DM Templates",
       "comment-triggers": "Comment Triggers",
-      contacts: "Contacts CRM",
       media: "Media Library",
       calendar: "Content Calendar",
       notifications: "Notifications",
@@ -149,12 +178,10 @@ export default function App() {
     const map = {
       dashboard: "Overview of your automation activity",
       accounts: "Manage connected Instagram accounts",
-      targets: "Queue of users to send DMs to",
       messages: "Create and manage message templates",
       "comment-triggers": "Auto-DM users who comment on posts",
-      contacts: "Manage your audience and leads",
       media: "Upload and organize media assets",
-      calendar: "View scheduled content on a calendar",
+      calendar: "View and create scheduled Telegram content",
       notifications: "Stay updated on platform activity",
       telegram: "Manage bots, schedule posts & moderate channels",
       settings: "Configure bot behavior and limits",
@@ -177,11 +204,18 @@ export default function App() {
 
       {/* ── Mobile header ─────────────────────────────────────────────────────── */}
       <div className="mobile-header">
-        <div className="brand" style={{ fontSize: "16px" }}>
-          <Mail size={20} style={{ stroke: "url(#brand-grad)" }} />
+        <div className="mobile-brand">
+          <span className="mobile-brand-mark"><Mail size={18} /></span>
           <span>Lyvora</span>
         </div>
-        <button className="hamburger-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
+        <button
+          type="button"
+          className="hamburger-btn"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={sidebarOpen}
+          aria-controls="primary-sidebar"
+        >
           {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
@@ -190,32 +224,38 @@ export default function App() {
       <div
         className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
         onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
       />
 
       {/* ── Sidebar ───────────────────────────────────────────────────────────── */}
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+      <aside id="primary-sidebar" className={`sidebar ${sidebarOpen ? "open" : ""}`} aria-label="Primary navigation">
         <div className="brand brand-lockup">
           <div className="brand-mark"><Mail size={21} /></div>
           <div className="brand-copy"><span>Lyvora</span><small>Growth workspace</small></div>
         </div>
 
         <nav className="nav-menu">
-          <div className="nav-section-label">Workspace</div>
-          {navItems.map(({ id, label, icon: Icon, isAdmin, isTelegram }) => (
-            <React.Fragment key={id}>
-              {isTelegram && <div className="nav-separator"><span>TELEGRAM</span></div>}
-              <button
-                type="button"
-                id={`nav-${id}`}
-                className={`nav-item ${activeTab === id ? "active" : ""} ${isAdmin ? "nav-item-admin" : ""} ${isTelegram ? "nav-item-telegram" : ""}`}
-                onClick={() => handleNavClick(id)}
-                aria-current={activeTab === id ? "page" : undefined}
-              >
-                <Icon size={18} />
-                <span>{label}</span>
-                {isAdmin && <span className="nav-admin-badge">ADMIN</span>}
-              </button>
-            </React.Fragment>
+          {navSections.map((section) => (
+            <div className="nav-group" key={section.label}>
+              <div className="nav-section-label">{section.label}</div>
+              {section.items.map(({ id, label, icon: Icon, isAdmin, isTelegram }) => (
+                <button
+                  type="button"
+                  id={`nav-${id}`}
+                  key={id}
+                  className={`nav-item ${activeTab === id ? "active" : ""} ${isAdmin ? "nav-item-admin" : ""} ${isTelegram ? "nav-item-telegram" : ""}`}
+                  onClick={() => {
+                    if (id === "telegram") setTelegramInitialTab("bots");
+                    handleNavClick(id);
+                  }}
+                  aria-current={activeTab === id ? "page" : undefined}
+                >
+                  <Icon size={17} />
+                  <span>{label}</span>
+                  {isAdmin && <span className="nav-admin-badge">ADMIN</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -271,7 +311,7 @@ export default function App() {
         {/* Page header — no tunnel input visible to users */}
         <header className="page-header">
           <div className="page-heading">
-            <div className="page-eyebrow"><Sparkles size={12} /> Lyvora workspace</div>
+            <div className="page-eyebrow"><span>Workspace</span><ChevronRight size={11} /><strong>{pageTitle()}</strong></div>
             <h1 className="page-title">{pageTitle()}</h1>
             <p className="page-subtitle">{pageSubtitle()}</p>
           </div>
@@ -301,8 +341,15 @@ export default function App() {
         </header>
 
         {/* Active view */}
-        <div style={{ flex: 1 }}>
-          {renderActiveComponent()}
+        <div className="page-content">
+          <Suspense fallback={
+            <div className="page-loader" role="status" aria-live="polite">
+              <LoaderCircle className="animate-spin" size={22} />
+              <span>Loading workspace…</span>
+            </div>
+          }>
+            {renderActiveComponent()}
+          </Suspense>
         </div>
       </main>
     </div>

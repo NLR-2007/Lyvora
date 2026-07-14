@@ -6,6 +6,7 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
   const [usernameInput, setUsernameInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [busyAccount, setBusyAccount] = useState(null);
   const [fetching, setFetching] = useState(false);
 
   const fetchAccounts = async () => {
@@ -46,18 +47,21 @@ export default function Accounts() {
   };
 
   const handleTriggerLogin = async (username) => {
+    setBusyAccount(username);
     try {
       await apiFetch(`/api/accounts/${username}/login`, { method: "POST" });
-      alert("Manual Login browser is launching on your laptop! Please look at your laptop screen to input credentials and 2FA.");
+      alert("A login browser is starting on the computer running the backend. Wait a few seconds, then complete login and 2FA in that window.");
       fetchAccounts();
     } catch (e) {
       alert(e.message || "Failed to launch login session.");
+    } finally {
+      setBusyAccount(null);
     }
   };
 
   const handleUploadSession = async (username, file) => {
     if (!file) return;
-    setLoading(true);
+    setBusyAccount(username);
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
@@ -66,28 +70,31 @@ export default function Accounts() {
           method: "POST",
           body: JSON.stringify(sessionData),
         });
-        alert(`Session uploaded and verified successfully for @${username}!`);
+        alert(`Session imported for @${username}. Verification is running; the status below will update automatically.`);
         fetchAccounts();
       } catch (err) {
         alert("Failed to upload/verify session: " + err.message);
       } finally {
-        setLoading(false);
+        setBusyAccount(null);
       }
     };
     reader.onerror = () => {
       alert("Failed to read file.");
-      setLoading(false);
+      setBusyAccount(null);
     };
     reader.readAsText(file);
   };
 
   const handleVerifySession = async (username) => {
+    setBusyAccount(username);
     try {
       await apiFetch(`/api/accounts/${username}/verify`, { method: "POST" });
       alert(`Session verification started for @${username}. The status will update automatically.`);
       fetchAccounts();
     } catch (e) {
       alert(e.message || "Failed to verify the Instagram session.");
+    } finally {
+      setBusyAccount(null);
     }
   };
 
@@ -150,6 +157,11 @@ export default function Accounts() {
                           <ShieldAlert size={12} style={{ marginRight: "4px" }} /> Verification Needed
                         </span>
                       )}
+                      {acc.status === "authentication_error" && (
+                        <span className="badge badge-failed">
+                          <ShieldAlert size={12} style={{ marginRight: "4px" }} /> Browser / Verification Error — Retry
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -160,7 +172,7 @@ export default function Accounts() {
                           className="btn btn-secondary"
                           style={{ padding: "8px 12px", fontSize: "12px" }}
                           onClick={() => handleTriggerLogin(acc.username)}
-                          disabled={loading}
+                          disabled={loading || busyAccount === acc.username || acc.status === "connecting"}
                         >
                           Authenticate (Playwright)
                         </button>
@@ -188,9 +200,9 @@ export default function Accounts() {
                             border: "none"
                           }}
                           onClick={() => document.getElementById(`session-upload-${acc.username}`).click()}
-                          disabled={loading}
+                          disabled={loading || busyAccount === acc.username || acc.status === "connecting"}
                         >
-                          {loading ? "Verifying..." : "Upload Session JSON"}
+                          {busyAccount === acc.username ? "Starting..." : "Upload Session JSON"}
                         </button>
                       </>
                     )}
@@ -199,7 +211,7 @@ export default function Accounts() {
                         className="btn btn-secondary"
                         style={{ padding: "8px 12px", fontSize: "12px" }}
                         onClick={() => handleVerifySession(acc.username)}
-                        disabled={loading}
+                        disabled={loading || busyAccount === acc.username}
                       >
                         Verify Session
                       </button>

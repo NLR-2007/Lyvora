@@ -92,6 +92,10 @@ class MessageTemplateSchema(BaseModel):
     content: str = Field(..., min_length=1)
     is_active: bool = True
 
+class MessageTemplateUpdateSchema(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    content: str = Field(..., min_length=1)
+
 class MessageTemplateResponse(BaseModel):
     id: int
     name: str

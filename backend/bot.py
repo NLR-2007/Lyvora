@@ -3,12 +3,13 @@ import os
 import random
 import time
 import asyncio
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 import threading
+from zoneinfo import ZoneInfo
 from playwright.async_api import async_playwright, Page, BrowserContext
 from sqlalchemy.orm import Session
-from backend.database import SessionLocal, Account, Target, MessageTemplate, BotLog, Setting, log_to_db, MonitoredPost, ProcessedComment, OptOut, User
+from backend.database import SessionLocal, Account, Target, MessageTemplate, BotLog, Setting, MetaConnection, log_to_db, MonitoredPost, ProcessedComment, OptOut, User
 from backend.config import settings
 from backend.security import decrypt_secret
 
@@ -16,6 +17,30 @@ from backend.security import decrypt_secret
 BOT_RUNNING = False
 BOT_THREAD = None
 BOT_LOOP = None
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def is_within_working_hours(start_value: str, end_value: str, now_ist: Optional[datetime] = None) -> bool:
+    """Return whether the current IST time is inside a normal or overnight window."""
+    try:
+        start_minutes = int(start_value[:2]) * 60 + int(start_value[3:5])
+        end_minutes = int(end_value[:2]) * 60 + int(end_value[3:5])
+    except (TypeError, ValueError, IndexError):
+        return True
+
+    current = now_ist or datetime.now(IST)
+    current_minutes = current.hour * 60 + current.minute
+    if start_minutes == end_minutes:
+        return True
+    if start_minutes < end_minutes:
+        return start_minutes <= current_minutes < end_minutes
+    return current_minutes >= start_minutes or current_minutes < end_minutes
+
+def create_browser_event_loop():
+    """Return an event loop capable of launching Playwright subprocesses."""
+    if os.name == "nt":
+        return asyncio.ProactorEventLoop()
+    return asyncio.new_event_loop()
 
 def parse_spintax(text: str) -> str:
     """Parses spintax pattern like '{Hello|Hi|Hey} {there|friend}!'. Supports nested patterns."""
@@ -27,6 +52,15 @@ def parse_spintax(text: str) -> str:
         options = match.group(1).split('|')
         text = text.replace(match.group(0), random.choice(options), 1)
     return text
+
+def is_exact_trigger_match(comment_text: str, trigger_keyword: str) -> bool:
+    """Require the complete comment to match the configured trigger."""
+    normalize = lambda value: " ".join((value or "").strip().casefold().split())
+    keyword = normalize(trigger_keyword)
+    return bool(keyword) and normalize(comment_text) == keyword
+
+def is_valid_instagram_username(username: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9._]{1,30}", (username or "").strip()))
 
 async def human_type(locator, text: str):
     """Simulates real human typing with random delays between characters on a Playwright Locator."""
@@ -41,12 +75,18 @@ class InstagramBot:
         self.user_data_dir = os.path.abspath(os.path.join(settings.USER_DATA_DIR, account_username))
         os.makedirs(self.user_data_dir, exist_ok=True)
         self.playwright = None
+        self.browser = None
         self.context = None
         self.page = None
         self.proxy = proxy
 
-    async def init_browser(self, headless: bool = False) -> BrowserContext:
-        """Initializes persistent browser context."""
+    async def init_browser(self, headless: bool = False, persistent: bool = True) -> BrowserContext:
+        """Initializes a browser context.
+
+        Interactive and automation sessions use a persistent Chromium profile.
+        Read-only verification uses an isolated context so it cannot lock that
+        profile and prevent a visible login browser from opening.
+        """
         self.playwright = await async_playwright().start()
         
         # User agent spoofing to sound more like a standard human browser
@@ -70,18 +110,30 @@ class InstagramBot:
             except Exception as e:
                 print(f"Error reading storage_state.json: {e}")
             
-        self.context = await self.playwright.chromium.launch_persistent_context(
-            user_data_dir=self.user_data_dir,
-            headless=headless,
-            user_agent=user_agent,
-            viewport={"width": 1280, "height": 720},
-            proxy=self.proxy,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage"
-            ]
-        )
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+        ]
+        if persistent:
+            self.context = await self.playwright.chromium.launch_persistent_context(
+                user_data_dir=self.user_data_dir,
+                headless=headless,
+                user_agent=user_agent,
+                viewport={"width": 1280, "height": 720},
+                proxy=self.proxy,
+                args=launch_args,
+            )
+        else:
+            self.browser = await self.playwright.chromium.launch(
+                headless=headless,
+                proxy=self.proxy,
+                args=launch_args,
+            )
+            self.context = await self.browser.new_context(
+                user_agent=user_agent,
+                viewport={"width": 1280, "height": 720},
+            )
         
         # Inject cookies post-launch since storage_state is not supported in launch_persistent_context
         if cookies_to_add:
@@ -118,12 +170,15 @@ class InstagramBot:
         try:
             if self.context:
                 await self.context.close()
+            if self.browser:
+                await self.browser.close()
             if self.playwright:
                 await self.playwright.stop()
         except Exception as e:
             print(f"Error closing browser: {e}")
         finally:
             self.context = None
+            self.browser = None
             self.playwright = None
             self.page = None
 
@@ -141,14 +196,60 @@ class InstagramBot:
                     log_to_db("WARNING", f"Navigation to check Instagram login status timed out or failed: {str(goto_err)}")
                 await asyncio.sleep(4)
             
-            # Check if feed or navigation exists (e.g. search icon, direct message icon, or profile picture)
+            current_url = self.page.url
+            logged_out_paths = ("/accounts/login", "/challenge/", "/accounts/suspended/")
+            if any(path in current_url for path in logged_out_paths):
+                log_to_db("WARNING", f"Instagram requires authentication at: {current_url}")
+                return False
+
+            # Ask Instagram for the current user. This is more stable than UI
+            # selectors, which change frequently and differ by account rollout.
+            try:
+                current_user = await self.page.evaluate("""
+                    async () => {
+                        const endpoints = [
+                            '/api/v1/accounts/edit/web_form_data/',
+                            '/api/v1/web/accounts/current_user/?__a=1'
+                        ];
+                        for (const endpoint of endpoints) {
+                            try {
+                                const response = await fetch(endpoint, {
+                                    credentials: 'include',
+                                    headers: {'X-IG-App-ID': '936619743392459'}
+                                });
+                                if (!response.ok) continue;
+                                const data = await response.json();
+                                const user = data?.form_data || data?.user;
+                                if (user?.username || user?.pk || user?.id) return user;
+                            } catch (_) {}
+                        }
+                        return null;
+                    }
+                """)
+                if current_user:
+                    verified_username = str(current_user.get("username", "")).lstrip("@").lower()
+                    expected_username = self.username.lstrip("@").lower()
+                    if verified_username and verified_username != expected_username:
+                        log_to_db(
+                            "WARNING",
+                            f"Imported session belongs to @{verified_username}, not @{expected_username}.",
+                        )
+                        return False
+                    log_to_db("INFO", f"Instagram API confirmed an active session for {self.username}.")
+                    return True
+            except Exception as api_error:
+                log_to_db("WARNING", f"Instagram current-user check was unavailable: {api_error!r}")
+
+            # DOM fallback for UI variants where the current-user endpoint is unavailable.
             logged_in_indicators = [
                 'svg[aria-label="Direct"]',
                 'svg[aria-label="Messenger"]',
                 'svg[aria-label="New post"]',
                 'svg[aria-label="Home"]',
                 'svg[aria-label="Search"]',
-                'a[href*="/direct/inbox/"]'
+                'a[href*="/direct/inbox/"]',
+                'a[href="/accounts/edit/"]',
+                'a[href^="/direct/"]',
             ]
             
             for selector in logged_in_indicators:
@@ -162,23 +263,20 @@ class InstagramBot:
                 log_to_db("WARNING", f"Login form input detected on page. User is logged out.")
                 return False
                 
-            current_url = self.page.url
-            if "instagram.com/accounts/login" in current_url:
-                log_to_db("WARNING", f"Redirected to login page: {current_url}. User is logged out.")
-                return False
-                
             # If no logged in indicators are visible, strictly treat as not logged in
             return False
         except Exception as e:
-            log_to_db("ERROR", f"Error checking login status: {str(e)}")
+            log_to_db("ERROR", f"Error checking login status: {type(e).__name__}: {e!r}")
             return False
 
     async def run_manual_login_session(self) -> bool:
         """Launches a visible browser window so the user can perform manual login/2FA."""
         log_to_db("INFO", f"Launching manual login browser window for {self.username}...")
-        await self.init_browser(headless=False)
         success = False
+        browser_started = False
         try:
+            await self.init_browser(headless=False)
+            browser_started = True
             await self.page.goto("https://www.instagram.com/accounts/login/", wait_until="load")
             log_to_db("INFO", "Please perform the login in the opened browser window. Do not close it until completed.")
             
@@ -200,7 +298,9 @@ class InstagramBot:
                 await asyncio.sleep(3)
                 
         except Exception as e:
-            log_to_db("ERROR", f"Manual login process failed: {str(e)}")
+            log_to_db("ERROR", f"Manual login process failed: {type(e).__name__}: {e!r}")
+            if not browser_started:
+                raise
         finally:
             await self.close_browser()
             log_to_db("INFO", "Manual login browser window closed.")
@@ -492,10 +592,6 @@ class InstagramBot:
             # Try clicking a result item that contains the username text
             result_selectors = [
                 f'div[role="dialog"] span:text-is("{target_username}")',
-                f'div[role="dialog"] span:text("{target_username}")',
-                f'div[role="dialog"] button:has-text("{target_username}")',
-                f'div[role="dialog"] div[role="button"]:has-text("{target_username}")',
-                f'div[role="listbox"] div:has-text("{target_username}")',
                 f'//span[translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="{target_username.lower()}"]',
                 f'span:text-is("{target_username}")',
             ]
@@ -516,20 +612,22 @@ class InstagramBot:
                 if user_clicked:
                     break
 
-            # Fallback: click the first visible result row in the dialog
+            # Fallback: click a row only when one of its leaf elements is an
+            # exact username match. Never click the first or a partial match.
             if not user_clicked:
-                log_to_db("INFO", "Trying to click first search result row...")
+                log_to_db("INFO", "Looking for an exact username result row...")
                 try:
-                    # Instagram search results are typically in a scrollable div with clickable rows
                     result_rows = self.page.locator('div[role="dialog"] div[role="none"], div[role="dialog"] label, div[role="dialog"] div[style*="cursor: pointer"]')
                     if await result_rows.count() > 0:
                         for i in range(await result_rows.count()):
                             row = result_rows.nth(i)
-                            row_text = await row.inner_text()
-                            if target_username.lower() in row_text.lower():
+                            leaf_texts = await row.locator('span, div').evaluate_all(
+                                "els => els.filter(el => el.children.length === 0).map(el => (el.textContent || '').trim().toLowerCase())"
+                            )
+                            if target_username.lower() in leaf_texts:
                                 await row.click()
                                 user_clicked = True
-                                log_to_db("INFO", f"Clicked result row containing @{target_username}.")
+                                log_to_db("INFO", f"Clicked exact result row for @{target_username}.")
                                 break
                 except Exception as e:
                     log_to_db("WARNING", f"Result row click fallback failed: {e}")
@@ -738,7 +836,7 @@ class InstagramBot:
         except Exception as e:
             log_to_db("WARNING", f"Failed random activity: {e}")
 
-    async def scrape_post_comments(self, post_url: str, trigger_keyword: str, own_username: str = "") -> list:
+    async def _scrape_post_comments_legacy(self, post_url: str, trigger_keyword: str, own_username: str = "") -> list:
         """Navigates to post_url, ensures the comment drawer is open, and extracts comments.
         own_username is excluded from results to avoid DMing yourself."""
         if not self.page:
@@ -911,6 +1009,233 @@ class InstagramBot:
             log_to_db("ERROR", f"Error scraping comments on {post_url}: {str(e)}")
             return []
 
+    async def scrape_post_comments(self, post_url: str, trigger_keyword: str, own_username: str = "") -> list:
+        """Load correctly mapped comment authors/text and match an exact trigger.
+
+        Instagram's media API is preferred because each comment object contains
+        its own author. The DOM fallback is deliberately strict and returns no
+        recipient when a comment container is ambiguous.
+        """
+        if not self.page:
+            raise Exception("Browser not initialized.")
+
+        log_to_db("INFO", f"Checking comments on post: {post_url}")
+        try:
+            try:
+                await self.page.goto(post_url, wait_until="domcontentloaded", timeout=25000)
+            except Exception as goto_error:
+                log_to_db("WARNING", f"Navigation to post failed, continuing: {goto_error!r}")
+            await asyncio.sleep(random.uniform(3.0, 5.0))
+
+            try:
+                comment_button = self.page.locator(
+                    'button:has(svg[aria-label="Comment"]), svg[aria-label="Comment"]'
+                ).first
+                if await comment_button.is_visible():
+                    await comment_button.click(force=True)
+                    await asyncio.sleep(3.0)
+            except Exception as drawer_error:
+                log_to_db("WARNING", f"Could not open comments drawer: {drawer_error!r}")
+
+            shortcode_match = re.search(r"/(?:p|reel|tv)/([^/?#]+)", post_url)
+            shortcode = shortcode_match.group(1) if shortcode_match else ""
+            result = {"ok": False, "comments": [], "error": "Post shortcode missing"}
+
+            if shortcode:
+                result = await self.page.evaluate("""async (shortcode) => {
+                    const headers = {'X-IG-App-ID': '936619743392459'};
+                    const comments = [];
+                    const seen = new Set();
+                    const add = (items) => {
+                        for (const item of (items || [])) {
+                            const username = item?.user?.username;
+                            const commentText = item?.text;
+                            if (!username || typeof commentText !== 'string') continue;
+                            const key = `${username.toLowerCase()}::${commentText}`;
+                            if (seen.has(key)) continue;
+                            seen.add(key);
+                            const commentPermalink = item?.pk ? `/p/${shortcode}/c/${item.pk}/` : '';
+                            comments.push({username, commentText, commentPermalink});
+                        }
+                    };
+                    try {
+                        const infoResponse = await fetch(
+                            `/api/v1/media/shortcode/${encodeURIComponent(shortcode)}/info/`,
+                            {credentials: 'include', headers}
+                        );
+                        if (!infoResponse.ok) {
+                            return {ok: false, comments: [], error: `Media info HTTP ${infoResponse.status}`};
+                        }
+                        const info = await infoResponse.json();
+                        const media = info?.items?.[0];
+                        const mediaId = media?.pk || media?.id;
+                        if (!mediaId) return {ok: false, comments: [], error: 'Media id missing'};
+                        add(media?.preview_comments);
+
+                        let cursor = '';
+                        for (let page = 0; page < 3; page++) {
+                            const suffix = cursor ? `&min_id=${encodeURIComponent(cursor)}` : '';
+                            const response = await fetch(
+                                `/api/v1/media/${encodeURIComponent(mediaId)}/comments/?can_support_threading=true&permalink_enabled=false${suffix}`,
+                                {credentials: 'include', headers}
+                            );
+                            if (!response.ok) {
+                                if (comments.length) break;
+                                return {ok: false, comments: [], error: `Comments HTTP ${response.status}`};
+                            }
+                            const data = await response.json();
+                            add(data?.comments);
+                            cursor = data?.next_min_id || '';
+                            if (!cursor) break;
+                        }
+                        return {ok: true, comments, error: ''};
+                    } catch (error) {
+                        return {ok: false, comments: [], error: String(error)};
+                    }
+                }""", shortcode)
+
+            raw_comments = result.get("comments", [])
+            if result.get("ok"):
+                log_to_db("INFO", f"Loaded {len(raw_comments)} mapped comments from Instagram's media API.")
+            else:
+                log_to_db("WARNING", f"Comments API unavailable; using strict DOM fallback: {result.get('error')}")
+                raw_comments = await self.page.evaluate("""() => {
+                    const output = [];
+                    const seen = new Set();
+                    const reserved = new Set(['p', 'reel', 'explore', 'direct', 'accounts']);
+                    for (const link of document.querySelectorAll('a[href^="/"]')) {
+                        const path = (link.getAttribute('href') || '').replace(/^\//, '').replace(/\/$/, '');
+                        const label = (link.textContent || '').trim().replace(/^@/, '');
+                        if (!path || path.includes('/') || reserved.has(path.toLowerCase()) ||
+                            label.toLowerCase() !== path.toLowerCase()) continue;
+
+                        const username = path;
+                        let commentText = '';
+                        let commentPermalink = '';
+                        let ancestor = link.parentElement;
+                        // In Instagram's current DOM the nearest comment body is
+                        // a sibling of the author/time header. Only accept a
+                        // single text-only sibling; links, times and buttons make
+                        // the container ambiguous and therefore unsafe.
+                        for (let depth = 0; ancestor && depth < 7; depth++, ancestor = ancestor.parentElement) {
+                            const candidates = [...ancestor.children].filter(child =>
+                                !child.contains(link) &&
+                                !child.querySelector('a[href], time, [role="button"]') &&
+                                !(child.getAttribute('role') === 'button')
+                            ).map(child => (child.textContent || '').trim()).filter(text =>
+                                text && !/^(reply|like|see translation|follow|verified)$/i.test(text)
+                            );
+                            if (candidates.length === 1) {
+                                commentText = candidates[0];
+                                const permalink = ancestor.querySelector('a[href*="/c/"]');
+                                commentPermalink = permalink?.getAttribute('href') || '';
+                                break;
+                            }
+                        }
+                        if (!commentText) continue;
+                        const key = `${username.toLowerCase()}::${commentText}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            output.push({username, commentText, commentPermalink});
+                        }
+                    }
+                    return output;
+                }""")
+
+            matched = []
+            seen = set()
+            for item in raw_comments:
+                username = str(item.get("username", "")).strip()
+                comment_text = str(item.get("commentText", ""))
+                comment_permalink = str(item.get("commentPermalink", "")).strip()
+                key = (username.casefold(), comment_text.casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                if own_username and username.casefold() == own_username.casefold():
+                    continue
+                if is_valid_instagram_username(username) and is_exact_trigger_match(comment_text, trigger_keyword):
+                    matched.append((username, comment_text, comment_permalink))
+
+            log_to_db("INFO", f"Found {len(matched)} exact comments matching trigger '{trigger_keyword}'.")
+            return matched
+        except Exception as error:
+            log_to_db("ERROR", f"Safe comment scrape failed for {post_url}: {type(error).__name__}: {error!r}")
+            return []
+
+    async def reply_to_comment(self, comment_permalink: str, username: str) -> bool:
+        """Post a public confirmation reply to one exact source comment."""
+        if not self.page or not is_valid_instagram_username(username):
+            return False
+        if not re.fullmatch(r"/(?:p|reel)/[A-Za-z0-9_-]+/c/\d+/?", comment_permalink or ""):
+            log_to_db("WARNING", f"Cannot reply to @{username}: safe comment permalink is unavailable.")
+            return False
+
+        reply_text = f"@{username} We've sent the link to your DM. Please check your messages."
+        try:
+            await self.page.goto(
+                f"https://www.instagram.com{comment_permalink}",
+                wait_until="domcontentloaded",
+                timeout=25000,
+            )
+            await asyncio.sleep(4.0)
+
+            try:
+                comment_button = self.page.locator(
+                    'button:has(svg[aria-label="Comment"]), svg[aria-label="Comment"]'
+                ).first
+                if await comment_button.is_visible():
+                    await comment_button.click(force=True)
+                    await asyncio.sleep(3.0)
+            except Exception:
+                pass
+
+            reply_clicked = await self.page.evaluate("""(permalink) => {
+                const commentId = (permalink.match(/\/c\/(\d+)/) || [])[1];
+                const links = [...document.querySelectorAll('a[href]')].filter(link => {
+                    const href = link.getAttribute('href') || '';
+                    return href === permalink || (commentId && href.includes(`/c/${commentId}/`));
+                });
+                for (const link of links) {
+                    let node = link.parentElement;
+                    for (let depth = 0; node && depth < 10; depth++, node = node.parentElement) {
+                        const button = [...node.querySelectorAll('[role="button"], button')]
+                            .find(item => (item.textContent || '').trim() === 'Reply');
+                        if (button) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }""", comment_permalink)
+            if not reply_clicked:
+                log_to_db("WARNING", f"Reply control was not found for @{username}.")
+                return False
+            await asyncio.sleep(1.0)
+
+            input_box = self.page.locator(
+                'textarea[placeholder*="comment" i], textarea[aria-label*="comment" i]'
+            ).first
+            if not await input_box.is_visible():
+                log_to_db("WARNING", f"Comment reply input was not found for @{username}.")
+                return False
+            await input_box.fill(reply_text)
+
+            post_button = self.page.locator(
+                'button:text-is("Post"), div[role="button"]:text-is("Post")'
+            ).first
+            if not await post_button.is_visible():
+                log_to_db("WARNING", f"Comment Post button was not found for @{username}.")
+                return False
+            await post_button.click()
+            await asyncio.sleep(2.0)
+            log_to_db("SUCCESS", f"Posted DM confirmation reply to @{username}'s source comment.")
+            return True
+        except Exception as error:
+            log_to_db("WARNING", f"Public comment reply failed for @{username}: {type(error).__name__}: {error!r}")
+            return False
+
     # The background worker runner loop
 async def bot_worker_loop():
     global BOT_RUNNING
@@ -927,9 +1252,16 @@ async def bot_worker_loop():
                 break
                 
             # 2. Get active config parameters
-            daily_limit = int(db.query(Setting).filter(Setting.key == "daily_limit").first().value)
-            min_delay = int(db.query(Setting).filter(Setting.key == "min_delay").first().value)
-            max_delay = int(db.query(Setting).filter(Setting.key == "max_delay").first().value)
+            setting_rows = {row.key: row.value for row in db.query(Setting).all()}
+            daily_limit = max(1, int(setting_rows.get("daily_limit", "30")))
+            min_delay = max(10, int(setting_rows.get("min_delay", "45")))
+            max_delay = max(min_delay, int(setting_rows.get("max_delay", "120")))
+            work_start = setting_rows.get("working_hours_start", "08:00")
+            work_end = setting_rows.get("working_hours_end", "22:00")
+
+            if not is_within_working_hours(work_start, work_end):
+                await asyncio.sleep(60)
+                continue
             
             # Fetch connected accounts only for users who have activated their automation
             active_user_ids = [u.id for u in db.query(User).filter(User.automation_active == True).all()]
@@ -949,18 +1281,20 @@ async def bot_worker_loop():
 
             bot_action_taken = False
 
-            # Check API Mode (suspends Playwright if using compliant official Meta API)
-            api_mode_setting = db.query(Setting).filter(Setting.key == "api_mode").first()
-            api_mode = api_mode_setting.value if api_mode_setting else "sandbox"
-            if api_mode == "official":
-                db.close()
-                await asyncio.sleep(30)
-                continue
-
             # Iterate through connected accounts sequentially to avoid resource hogging and IP blocks
             for active_account in active_accounts:
                 if not BOT_RUNNING:
                     break
+
+                # Official mode is tenant-specific. Never let one customer's
+                # Meta connection pause Playwright for every other workspace.
+                official_connection = db.query(MetaConnection).filter(
+                    MetaConnection.workspace_id == active_account.workspace_id,
+                    MetaConnection.status == "connected",
+                    MetaConnection.is_active == True,
+                ).first()
+                if official_connection:
+                    continue
 
                 # Parse proxy details
                 proxy_config = None
@@ -973,7 +1307,8 @@ async def bot_worker_loop():
                         proxy_config["password"] = decrypt_secret(active_account.proxy_password)
 
                 # 3. Check today's send count (targets + comments)
-                today_start = datetime.combine(date.today(), datetime.min.time())
+                now_ist = datetime.now(IST)
+                today_start = now_ist.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).replace(tzinfo=None)
                 sent_targets = db.query(Target).filter(
                     Target.status == "sent", 
                     Target.sent_at >= today_start,
@@ -1005,9 +1340,8 @@ async def bot_worker_loop():
                 # --- Phase A: Comment-to-DM Trigger Checks ---
                 if active_posts:
                     bot = InstagramBot(active_account.username, proxy=proxy_config)
-                    await bot.init_browser(headless=settings.HEADLESS)
-                    
                     try:
+                        await bot.init_browser(headless=settings.HEADLESS)
                         logged_in = await bot.check_login_status()
                         if not logged_in:
                             is_login_page = False
@@ -1031,9 +1365,12 @@ async def bot_worker_loop():
                             comments = await bot.scrape_post_comments(post.post_url, post.trigger_keyword, own_username=active_account.username)
                             log_to_db("INFO", f"Scraped trigger comments for @{active_account.username} on post {post.id}: {comments}")
                             
-                            for username, comment_text in comments:
+                            for username, comment_text, comment_permalink in comments:
                                 if not BOT_RUNNING:
                                     break
+                                if not is_valid_instagram_username(username) or not is_exact_trigger_match(comment_text, post.trigger_keyword):
+                                    log_to_db("ERROR", f"[SAFETY] Refused invalid or mismatched comment recipient @{username}.")
+                                    continue
                                 
                                 # 1. Opt-out keyword check
                                 opt_out_setting = db.query(Setting).filter(Setting.key == "opt_out_keywords").first()
@@ -1097,6 +1434,7 @@ async def bot_worker_loop():
                                             processed_at=datetime.utcnow()
                                         ))
                                         log_to_db("SUCCESS", f"Sent trigger comment DM to @{username} from @{active_account.username}")
+                                        await bot.reply_to_comment(comment_permalink, username)
                                     else:
                                         raise Exception("DM delivery routine returned False.")
                                 except Exception as dm_err:
@@ -1123,7 +1461,7 @@ async def bot_worker_loop():
                                         
                         await bot.close_browser()
                     except Exception as loop_err:
-                        log_to_db("ERROR", f"Scraper logic failed for @{active_account.username}: {loop_err}")
+                        log_to_db("ERROR", f"Scraper logic failed for @{active_account.username}: {type(loop_err).__name__}: {loop_err!r}")
                         await bot.close_browser()
 
                 # --- Phase B: Standard Queue Checks ---
@@ -1220,7 +1558,7 @@ async def bot_worker_loop():
                 await asyncio.sleep(30)
 
         except Exception as e:
-            log_to_db("ERROR", f"Bot execution loop encountered an error: {str(e)}")
+            log_to_db("ERROR", f"Bot execution loop encountered an error: {type(e).__name__}: {e!r}")
             await asyncio.sleep(10)
         finally:
             db.close()
@@ -1246,7 +1584,7 @@ def start_bot_background():
     
     def run_async_loop():
         global BOT_LOOP
-        BOT_LOOP = asyncio.new_event_loop()
+        BOT_LOOP = create_browser_event_loop()
         asyncio.set_event_loop(BOT_LOOP)
         BOT_LOOP.run_until_complete(bot_worker_loop())
         BOT_LOOP.close()

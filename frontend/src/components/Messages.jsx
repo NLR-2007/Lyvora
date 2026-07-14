@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { apiFetch } from "../api";
-import { Plus, Trash2, Sparkles, MessageSquare, Eye, Copy, RefreshCw, Zap, PenLine, Wand2 } from "lucide-react";
+import { Plus, Trash2, Sparkles, MessageSquare, Eye, RefreshCw, Zap, PenLine, Wand2, Pencil, X } from "lucide-react";
 
 const SPINTAX_MAP = [
   { match: /\bthanks for commenting\b/gi, replace: "{Thanks for commenting!|Thank you for commenting!|Appreciate the comment!}" },
@@ -77,7 +77,9 @@ export default function Messages() {
   const [mode, setMode] = useState("plain");
   const [loading, setLoading] = useState(false);
   const [previewSeed, setPreviewSeed] = useState(0);
+  const [editingId, setEditingId] = useState(null);
   const textareaRef = useRef(null);
+  const editorRef = useRef(null);
 
   const fetchTemplates = async () => {
     try {
@@ -100,22 +102,29 @@ export default function Messages() {
     }
   }, [content, mode]);
 
-  const handleAddTemplate = async (e) => {
+  const resetEditor = () => {
+    setEditingId(null);
+    setName("");
+    setContent("");
+    setSpintaxOutput("");
+    setMode("plain");
+  };
+
+  const handleSaveTemplate = async (e) => {
     e.preventDefault();
     if (!name.trim() || !content.trim()) return;
     setLoading(true);
     try {
       const finalContent = mode === "plain" ? spintaxOutput : content;
-      await apiFetch("/api/messages", {
-        method: "POST",
-        body: JSON.stringify({ name, content: finalContent, is_active: true }),
+      const payload = { name: name.trim(), content: finalContent.trim() };
+      await apiFetch(editingId ? `/api/messages/${editingId}` : "/api/messages", {
+        method: editingId ? "PUT" : "POST",
+        body: JSON.stringify(editingId ? payload : { ...payload, is_active: true }),
       });
-      setName("");
-      setContent("");
-      setSpintaxOutput("");
+      resetEditor();
       fetchTemplates();
     } catch (e) {
-      alert(e.message || "Failed to add template.");
+      alert(e.message || `Failed to ${editingId ? "update" : "add"} template.`);
     } finally {
       setLoading(false);
     }
@@ -134,10 +143,20 @@ export default function Messages() {
     if (!confirm("Are you sure you want to delete this template?")) return;
     try {
       await apiFetch(`/api/messages/${id}`, { method: "DELETE" });
+      if (editingId === id) resetEditor();
       fetchTemplates();
     } catch (e) {
       alert(e.message || "Failed to delete template.");
     }
+  };
+
+  const handleEditTemplate = (template) => {
+    setEditingId(template.id);
+    setName(template.name);
+    setContent(template.content);
+    setMode("spintax");
+    setPreviewSeed(0);
+    setTimeout(() => editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
 
   const insertPlaceholder = (tag) => {
@@ -190,11 +209,11 @@ export default function Messages() {
                       <h4 style={{ fontWeight: "600", fontSize: "16px", color: "var(--text-primary)" }}>{tpl.name}</h4>
                       {tpl.is_active && (
                         <span style={{ fontSize: "11px", color: "var(--accent)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          Active Target Template
+                          Active DM Template
                         </span>
                       )}
                     </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
+                    <div className="template-card-actions" style={{ display: "flex", gap: "8px" }}>
                       <button
                         className={`btn ${tpl.is_active ? "btn-primary" : "btn-secondary"}`}
                         style={{ padding: "6px 12px", fontSize: "12px", height: "30px" }}
@@ -203,9 +222,20 @@ export default function Messages() {
                         {tpl.is_active ? "Active" : "Inactive"}
                       </button>
                       <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: "6px 10px", height: "30px" }}
+                        onClick={() => handleEditTemplate(tpl)}
+                        aria-label={`Edit ${tpl.name}`}
+                      >
+                        <Pencil size={14} /> Edit
+                      </button>
+                      <button
+                        type="button"
                         className="btn btn-danger"
                         style={{ padding: "6px 10px", height: "30px" }}
                         onClick={() => handleDeleteTemplate(tpl.id)}
+                        aria-label={`Delete ${tpl.name}`}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -235,10 +265,15 @@ export default function Messages() {
 
       {/* Editor Column */}
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-        <div className="glass-card">
+        <div className="glass-card" ref={editorRef}>
           <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "20px" }}>
-            <Sparkles size={20} style={{ color: "var(--accent)" }} />
-            <h3 style={{ fontSize: "18px", fontWeight: "700" }}>Create Template</h3>
+            {editingId ? <Pencil size={20} style={{ color: "var(--accent)" }} /> : <Sparkles size={20} style={{ color: "var(--accent)" }} />}
+            <h3 style={{ fontSize: "18px", fontWeight: "700", flex: 1 }}>{editingId ? "Edit Template" : "Create Template"}</h3>
+            {editingId && (
+              <button type="button" className="btn btn-secondary" onClick={resetEditor} aria-label="Cancel editing">
+                <X size={14} /> Cancel
+              </button>
+            )}
           </div>
 
           {/* Mode Toggle */}
@@ -289,7 +324,7 @@ export default function Messages() {
             </button>
           </div>
 
-          <form onSubmit={handleAddTemplate}>
+          <form onSubmit={handleSaveTemplate}>
             <div className="form-group">
               <label className="form-label">Template Name</label>
               <input
@@ -387,7 +422,7 @@ export default function Messages() {
               style={{ width: "100%", height: "45px" }}
               disabled={loading}
             >
-              <Plus size={16} /> Save Template
+              {editingId ? <Pencil size={16} /> : <Plus size={16} />} {editingId ? "Update Template" : "Save Template"}
             </button>
           </form>
         </div>

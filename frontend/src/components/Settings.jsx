@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { apiFetch } from "../api";
-import { Save, AlertCircle, Shield, Trash2, Plus, Key, CheckCircle } from "lucide-react";
+import { Save, AlertCircle, Shield, Trash2, Plus, Key, CheckCircle, Link2, Unplug, Bot, Lock, Building2, User } from "lucide-react";
 
 
 export default function Settings() {
@@ -15,9 +15,15 @@ export default function Settings() {
   // Compliance Settings
   const [apiMode, setApiMode] = useState("sandbox"); // sandbox or official
   const [optOutKeywords, setOptOutKeywords] = useState("stop, unsubscribe, optout, stopdm");
-  const [consentEnforce, setConsentEnforce] = useState(true);
-  const [metaPageAccessToken, setMetaPageAccessToken] = useState("");
-  const [metaVerifyToken, setMetaVerifyToken] = useState("");
+  const consentEnforce = true;
+  const [metaInstagramUserId, setMetaInstagramUserId] = useState("");
+  const [metaAccessToken, setMetaAccessToken] = useState("");
+  const [metaConnection, setMetaConnection] = useState(null);
+  const [metaPlatformConfigured, setMetaPlatformConfigured] = useState(false);
+  const [showMetaForm, setShowMetaForm] = useState(true);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [saveNotice, setSaveNotice] = useState(null);
+  const [runtimeStatus, setRuntimeStatus] = useState(null);
 
   // Blocklist states
   const [blocklist, setBlocklist] = useState([]);
@@ -36,11 +42,18 @@ export default function Settings() {
       
       if (data.api_mode) setApiMode(data.api_mode);
       if (data.opt_out_keywords) setOptOutKeywords(data.opt_out_keywords);
-      if (data.consent_enforce !== undefined) {
-        setConsentEnforce(data.consent_enforce === "true" || data.consent_enforce === true);
-      }
-      if (data.meta_page_access_token) setMetaPageAccessToken(data.meta_page_access_token);
-      if (data.meta_verify_token) setMetaVerifyToken(data.meta_verify_token);
+      const connected = Boolean(data.meta_connection_configured);
+      setMetaConnection(connected ? {
+        connected,
+        active: Boolean(data.meta_connection_active),
+        status: data.meta_connection_status,
+        instagram_user_id: data.meta_instagram_user_id,
+        instagram_username: data.meta_instagram_username,
+        access_token_masked: data.meta_access_token_masked,
+      } : null);
+      setMetaInstagramUserId(data.meta_instagram_user_id || "");
+      setMetaPlatformConfigured(Boolean(data.meta_platform_configured));
+      setShowMetaForm(!connected);
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -55,13 +68,27 @@ export default function Settings() {
     }
   };
 
+  const fetchRuntimeStatus = async () => {
+    try {
+      setRuntimeStatus(await apiFetch("/api/status"));
+    } catch (e) {
+      console.error("Failed to load automation status:", e);
+    }
+  };
+
   useEffect(() => {
     fetchSettings();
     fetchBlocklist();
+    fetchRuntimeStatus();
   }, []);
 
   const handleSaveSettings = async (e) => {
     e.preventDefault();
+    setSaveNotice(null);
+    if (maxDelay < minDelay) {
+      setSaveNotice({ type: "error", text: "Max delay must be greater than or equal to min delay." });
+      return;
+    }
     setLoading(true);
     try {
       // Save backend settings
@@ -75,20 +102,69 @@ export default function Settings() {
           working_hours_end: workingHoursEnd,
           api_mode: apiMode,
           opt_out_keywords: optOutKeywords,
-          consent_enforce: consentEnforce,
-          meta_page_access_token: metaPageAccessToken,
-          meta_verify_token: metaVerifyToken
+          consent_enforce: consentEnforce
         }),
       });
 
       // Tunnel URL is configured via .env — no local update needed
       
-      alert("All settings saved successfully!");
-      fetchSettings();
+      setSaveNotice({
+        type: "success",
+        text: runtimeStatus?.system_running && runtimeStatus?.user_automation_active
+          ? "Configuration saved and active."
+          : "Configuration saved. It will apply when automation is started.",
+      });
+      await fetchSettings();
+      await fetchRuntimeStatus();
     } catch (e) {
-      alert(e.message || "Failed to save settings.");
+      setSaveNotice({ type: "error", text: e.message || "Failed to save settings." });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConnectMeta = async (e) => {
+    e.preventDefault();
+    setSaveNotice(null);
+    setMetaLoading(true);
+    try {
+      const connection = await apiFetch("/api/meta/connection", {
+        method: "POST",
+        body: JSON.stringify({
+          instagram_user_id: metaInstagramUserId.trim(),
+          access_token: metaAccessToken.trim(),
+        }),
+      });
+      setMetaConnection(connection);
+      setMetaInstagramUserId(connection.instagram_user_id || "");
+      setMetaAccessToken("");
+      setShowMetaForm(false);
+      setSaveNotice({ type: "success", text: `Meta account @${connection.instagram_username || connection.instagram_user_id} connected securely.` });
+      await fetchSettings();
+    } catch (e) {
+      setSaveNotice({ type: "error", text: e.message || "Could not connect the Meta account." });
+    } finally {
+      setMetaLoading(false);
+    }
+  };
+
+  const handleDisconnectMeta = async () => {
+    if (!confirm("Disconnect this Meta account and permanently remove its stored access token?")) return;
+    setMetaLoading(true);
+    setSaveNotice(null);
+    try {
+      await apiFetch("/api/meta/connection", { method: "DELETE" });
+      setMetaConnection(null);
+      setMetaInstagramUserId("");
+      setMetaAccessToken("");
+      setApiMode("sandbox");
+      setShowMetaForm(true);
+      setSaveNotice({ type: "success", text: "Meta account disconnected and its token was removed." });
+      await fetchSettings();
+    } catch (e) {
+      setSaveNotice({ type: "error", text: e.message || "Could not disconnect the Meta account." });
+    } finally {
+      setMetaLoading(false);
     }
   };
 
@@ -131,79 +207,181 @@ export default function Settings() {
           <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "4px" }}>
             Configure delivery rules, security compliance, and messaging adapters.
           </p>
+          <div className={`settings-runtime-status ${runtimeStatus?.system_running && runtimeStatus?.user_automation_active ? "running" : "paused"}`}>
+            <span />
+            {runtimeStatus?.system_running && runtimeStatus?.user_automation_active
+              ? "Automation running — configuration is active"
+              : "Automation paused — configuration is saved but not executing"}
+          </div>
         </div>
 
         <form onSubmit={handleSaveSettings} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           
-          {/* Engine Mode selector */}
-          <div className="form-group" style={{ background: "rgba(255, 255, 255, 0.02)", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
-            <label className="form-label" style={{ fontWeight: "600", fontSize: "14px", marginBottom: "8px" }}>Messaging Engine Integration</label>
-            <div className="settings-radio-group" style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", color: "var(--text-primary)" }}>
-                <input 
-                  type="radio" 
-                  name="apiMode" 
-                  value="sandbox" 
-                  checked={apiMode === "sandbox"} 
-                  onChange={() => setApiMode("sandbox")} 
-                />
-                <span style={{ fontSize: "13px" }}>Sandbox Mode (Playwright Automation)</span>
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", color: "var(--text-primary)" }}>
-                <input 
-                  type="radio" 
-                  name="apiMode" 
-                  value="official" 
-                  checked={apiMode === "official"} 
-                  onChange={() => setApiMode("official")} 
-                />
-                <span style={{ fontSize: "13px", fontWeight: "600", color: "#2563EB" }}>Official Meta API Mode (Compliant)</span>
-              </label>
-            </div>
-            <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "10px", lineHeight: "1.4" }}>
-              {apiMode === "sandbox" 
-                ? "Sandbox Mode uses human simulation (randomized delays and typing) through browser cookies. Ideal for personal testing and developer evaluation." 
-                : "Official Mode routes messages officially via Meta's Graph API. Zero risk of account blocks, 100% compliant, webhooks based, requires Developer credentials."
-              }
-            </p>
-          </div>
-
-          {/* Conditional Meta Developer settings */}
-          {apiMode === "official" && (
-            <div className="form-group" style={{ padding: "16px", background: "#EFF6FF", borderRadius: "8px", border: "1px dashed #BFDBFE", display: "flex", flexDirection: "column", gap: "12px" }}>
-              <h4 style={{ fontSize: "13px", fontWeight: "600", color: "#0F172A", display: "flex", gap: "6px", alignItems: "center" }}>
-                <Key size={14} /> Meta Developer Integration API Keys
-              </h4>
-              
+          <section className="integration-panel" aria-labelledby="messaging-engine-title">
+            <div className="integration-panel-heading">
               <div>
-                <label className="form-label" style={{ fontSize: "11px" }}>Facebook Page Access Token (Instagram IGSID Messaging)</label>
-                <input 
-                  type="password" 
-                  className="form-input" 
-                  placeholder="e.g. EAAGt3..." 
-                  value={metaPageAccessToken}
-                  onChange={(e) => setMetaPageAccessToken(e.target.value)}
-                  style={{ height: "36px", fontSize: "12px" }}
-                />
+                <span className="section-eyebrow">Delivery channel</span>
+                <h4 id="messaging-engine-title">Messaging engine</h4>
+                <p>Choose how this workspace sends Instagram messages.</p>
               </div>
-
-              <div>
-                <label className="form-label" style={{ fontSize: "11px" }}>Webhook Verify Token (Configured in Meta Developer Portal)</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="e.g. gram_glide_secret_token" 
-                  value={metaVerifyToken}
-                  onChange={(e) => setMetaVerifyToken(e.target.value)}
-                  style={{ height: "36px", fontSize: "12px" }}
-                />
-              </div>
-
-              <span style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                Set your Meta Developer App Webhook callback URL to: <code style={{ color: "#0F172A", fontWeight: 600 }}>{tunnelUrl ? `${tunnelUrl}/api/webhooks/instagram` : "[configure tunnel url below]"}</code>
+              <span className={`engine-current-badge ${apiMode === "official" ? "official" : "sandbox"}`}>
+                {apiMode === "official" ? "Official active" : "Sandbox active"}
               </span>
             </div>
-          )}
+
+            <div className="engine-options" role="radiogroup" aria-label="Messaging engine">
+              <label className={`engine-option ${apiMode === "sandbox" ? "selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="apiMode"
+                  value="sandbox"
+                  checked={apiMode === "sandbox"}
+                  onChange={() => setApiMode("sandbox")}
+                />
+                <span className="engine-option-icon"><Bot size={18} /></span>
+                <span className="engine-option-copy">
+                  <span className="engine-option-title">Playwright Sandbox <small>Testing</small></span>
+                  <span>Browser-based automation for internal testing and development.</span>
+                </span>
+              </label>
+
+              <label className={`engine-option ${apiMode === "official" ? "selected" : ""} ${!metaPlatformConfigured || !metaConnection?.connected ? "disabled" : ""}`}>
+                <input
+                  type="radio"
+                  name="apiMode"
+                  value="official"
+                  checked={apiMode === "official"}
+                  onChange={() => setApiMode("official")}
+                  disabled={!metaPlatformConfigured || !metaConnection?.connected}
+                />
+                <span className="engine-option-icon meta"><Shield size={18} /></span>
+                <span className="engine-option-copy">
+                  <span className="engine-option-title">Official Meta API <small>Production</small></span>
+                  <span>Meta Graph API and webhooks for approved Professional accounts.</span>
+                </span>
+              </label>
+            </div>
+
+            <div className={`platform-readiness ${metaPlatformConfigured ? "ready" : "pending"}`}>
+              <span className="platform-readiness-icon"><Building2 size={17} /></span>
+              <span>
+                <strong>Lyvora Meta platform</strong>
+                <small>{metaPlatformConfigured ? "Configured once by Lyvora and ready for customer connections." : "Administrator setup is pending. Customers never enter the Lyvora App Secret."}</small>
+              </span>
+              <b>{metaPlatformConfigured ? "Ready" : "Admin setup"}</b>
+            </div>
+          </section>
+
+          <div className="meta-connection-card">
+            <div className="meta-connection-heading">
+              <span className="meta-heading-icon"><Key size={19} /></span>
+              <div className="meta-heading-copy">
+                <span className="section-eyebrow">Workspace account</span>
+                <h4>Connect Instagram Professional</h4>
+                <p>Connect one account securely to enable Official Meta automation.</p>
+              </div>
+              <span className={`meta-connected-badge ${metaConnection?.connected ? "connected" : "not-connected"}`}>
+                {metaConnection?.connected ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                {metaConnection?.connected ? "Connected" : "Not connected"}
+              </span>
+            </div>
+
+            <div className="meta-setup-path" aria-label="Official Meta setup progress">
+              <div className={metaPlatformConfigured ? "complete" : "current"}>
+                <span>{metaPlatformConfigured ? <CheckCircle size={14} /> : "1"}</span>
+                <p><strong>Platform</strong><small>Managed by Lyvora</small></p>
+              </div>
+              <i />
+              <div className={metaConnection?.connected ? "complete" : metaPlatformConfigured ? "current" : ""}>
+                <span>{metaConnection?.connected ? <CheckCircle size={14} /> : "2"}</span>
+                <p><strong>Instagram</strong><small>Connect workspace</small></p>
+              </div>
+              <i />
+              <div className={apiMode === "official" ? "complete" : metaConnection?.connected && metaPlatformConfigured ? "current" : ""}>
+                <span>{apiMode === "official" ? <CheckCircle size={14} /> : "3"}</span>
+                <p><strong>Activate</strong><small>Enable Official mode</small></p>
+              </div>
+            </div>
+
+            {metaConnection?.connected && !showMetaForm ? (
+              <div className="meta-connection-summary">
+                <span className="meta-account-avatar"><User size={19} /></span>
+                <div className="meta-account-identity">
+                  <strong>@{metaConnection.instagram_username || "Instagram account"}</strong>
+                  <span>Professional account · ID {metaConnection.instagram_user_id}</span>
+                  <span className="meta-token-state"><Lock size={12} /> Token {metaConnection.access_token_masked || "encrypted"}</span>
+                </div>
+                <div className="meta-connection-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowMetaForm(true)} disabled={metaLoading}>
+                    <Link2 size={14} /> Replace
+                  </button>
+                  <button type="button" className="btn btn-danger" onClick={handleDisconnectMeta} disabled={metaLoading}>
+                    <Unplug size={14} /> Disconnect
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="meta-connect-form">
+                {!metaPlatformConfigured && (
+                  <div className="meta-admin-notice" role="status">
+                    <Building2 size={17} />
+                    <span><strong>Waiting for Lyvora platform setup</strong><small>You may prepare your workspace connection now. Official mode unlocks after the administrator completes the platform setup.</small></span>
+                  </div>
+                )}
+                <div className="meta-credential-grid">
+                  <div>
+                  <label className="form-label">Instagram Professional Account ID</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="form-input"
+                    placeholder="e.g. 17841400000000000"
+                    value={metaInstagramUserId}
+                    onChange={(e) => setMetaInstagramUserId(e.target.value.replace(/\D/g, ""))}
+                    autoComplete="off"
+                  />
+                    <small className="field-help">Numeric ID for the Professional account.</small>
+                  </div>
+                  <div>
+                    <label className="form-label">Instagram User Access Token</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder={metaConnection?.connected ? "Paste a replacement token" : "Paste the token generated by Meta"}
+                      value={metaAccessToken}
+                      onChange={(e) => setMetaAccessToken(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                    <small className="field-help">Use a token with the required Meta permissions.</small>
+                  </div>
+                </div>
+                <div className="meta-security-copy">
+                  <Lock size={16} />
+                  <span><strong>Encrypted and workspace-isolated</strong><small>Lyvora validates this token with Meta, encrypts it before storage, and never returns the full value to your browser.</small></span>
+                </div>
+                <div className="meta-connection-actions">
+                  {metaConnection?.connected && (
+                    <button type="button" className="btn btn-secondary" onClick={() => { setShowMetaForm(false); setMetaAccessToken(""); }} disabled={metaLoading}>Cancel</button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleConnectMeta}
+                    disabled={metaLoading || !metaInstagramUserId || metaAccessToken.trim().length < 20}
+                  >
+                    <Link2 size={14} /> {metaLoading ? "Validating..." : "Validate & Connect"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <details className="meta-technical-details">
+              <summary>Technical connection details</summary>
+              <span className="meta-webhook-copy">
+                Webhook callback: <code>{tunnelUrl ? `${tunnelUrl}/api/webhooks/instagram` : "Not configured"}</code>
+              </span>
+            </details>
+          </div>
 
           {/* Base limits & delays */}
           <div className="settings-2col-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
@@ -239,7 +417,7 @@ export default function Settings() {
               <input 
                 type="number" 
                 className="form-input" 
-                min="15" 
+                min={minDelay}
                 value={maxDelay}
                 onChange={(e) => setMaxDelay(parseInt(e.target.value))}
                 disabled={apiMode === "official"}
@@ -249,13 +427,14 @@ export default function Settings() {
             <div className="form-group" style={{ display: "flex", flexDirection: "column" }}>
               <label className="form-label">Enforce Consent Keyword</label>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
-                <input 
+                <input
                   type="checkbox" 
-                  checked={consentEnforce} 
-                  onChange={(e) => setConsentEnforce(e.target.checked)}
+                  checked={consentEnforce}
+                  readOnly
+                  disabled
                   style={{ width: "16px", height: "16px" }}
                 />
-                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Only DM on Comment Keyword Match</span>
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Required: only DM on exact comment keyword match</span>
               </div>
             </div>
           </div>
@@ -264,7 +443,7 @@ export default function Settings() {
             <div className="form-group">
               <label className="form-label">Start Work Hour</label>
               <input 
-                type="text" 
+                type="time"
                 className="form-input" 
                 placeholder="08:00"
                 value={workingHoursStart}
@@ -276,7 +455,7 @@ export default function Settings() {
             <div className="form-group">
               <label className="form-label">End Work Hour</label>
               <input 
-                type="text" 
+                type="time"
                 className="form-input" 
                 placeholder="22:00"
                 value={workingHoursEnd}
@@ -299,10 +478,15 @@ export default function Settings() {
               required
             />
             <span style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-              Comma-separated list. If users comment or reply with these terms, they are auto-added to the blocklist.
+              Comma-separated list. Exact matching comments are automatically added to the blocklist.
             </span>
           </div>
-
+          {saveNotice && (
+            <div className={`auth-alert auth-alert-${saveNotice.type}`} role="status">
+              {saveNotice.type === "success" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+              {saveNotice.text}
+            </div>
+          )}
 
           <button 
             type="submit" 
@@ -350,7 +534,7 @@ export default function Settings() {
               No users opted-out currently.
             </div>
           ) : (
-            <div style={{ maxHeight: "250px", overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
+            <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                 <thead>
                   <tr style={{ background: "rgba(255,255,255,0.03)", textAlign: "left" }}>
@@ -400,12 +584,12 @@ export default function Settings() {
                 • <strong>Opt-Out Transparency:</strong> Always include unsubscribe instructions inside your message templates (e.g. <em>"Reply STOP to unsubscribe"</em>).
               </li>
               <li>
-                • <strong>Upgrade Path:</strong> If you are handling large campaign volumes, connect Page credentials and use <strong>Official Meta API Mode</strong> to ensure permanent immunity from platform spam blocks.
+                • <strong>Official API:</strong> For approved use cases, connect a Professional account and follow Meta's messaging permissions, limits, and response-window rules.
               </li>
             </ul>
             <div style={{ marginTop: "6px", display: "flex", gap: "8px", background: "rgba(16, 185, 129, 0.05)", border: "1px solid rgba(16, 185, 129, 0.2)", padding: "10px 14px", borderRadius: "6px", alignItems: "center" }}>
               <CheckCircle size={16} style={{ color: "var(--success)" }} />
-              <span style={{ fontSize: "12px", color: "var(--success)", fontWeight: "500" }}>Compliance engine is active.</span>
+              <span style={{ fontSize: "12px", color: "var(--success)", fontWeight: "500" }}>Exact-trigger and blocklist protection are configured.</span>
             </div>
           </div>
         </div>

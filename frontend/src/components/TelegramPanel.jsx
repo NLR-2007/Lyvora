@@ -6,8 +6,8 @@ import TgSchedule from "./TgSchedule";
 import TgModeration from "./TgModeration";
 import TgTemplates from "./TgTemplates";
 
-export default function TelegramPanel() {
-  const [activeTab, setActiveTab] = useState("bots");
+export default function TelegramPanel({ initialTab = "bots" }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [channels, setChannels] = useState([]);
 
   const fetchChannels = async () => {
@@ -21,6 +21,10 @@ export default function TelegramPanel() {
     fetchChannels();
   }, []);
 
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
   const tabs = [
     { id: "bots", label: "Bots & Channels", icon: Bot },
     { id: "schedule", label: "Schedule", icon: SendIcon },
@@ -29,16 +33,16 @@ export default function TelegramPanel() {
   ];
 
   return (
-    <div>
-      <div className="glass-card" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
-        <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "rgba(14, 165, 233, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0EA5E9" }}>
+    <div className="telegram-workspace">
+      <div className="glass-card tg-overview-card">
+        <div className="tg-overview-icon">
           <SendIcon size={18} />
         </div>
         <div>
-          <p style={{ fontWeight: 700, fontSize: "15px" }}>Telegram Automation</p>
-          <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+          <p>Telegram Automation</p>
+          <span>
             {channels.length} channel(s) connected — service controlled by admin
-          </p>
+          </span>
         </div>
       </div>
 
@@ -46,14 +50,9 @@ export default function TelegramPanel() {
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            className={`tg-tab ${activeTab === tab.id ? "active" : ""}`}
             onClick={() => setActiveTab(tab.id)}
-            style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-              padding: "10px", border: "none", borderRadius: "8px", cursor: "pointer",
-              fontSize: "13px", fontWeight: 600, fontFamily: "inherit", transition: "all 0.2s",
-              background: activeTab === tab.id ? "var(--bg-secondary)" : "transparent",
-              color: activeTab === tab.id ? "#2563EB" : "var(--text-muted)",
-            }}
           >
             <tab.icon size={14} /> {tab.label}
           </button>
@@ -61,7 +60,7 @@ export default function TelegramPanel() {
       </div>
 
       {activeTab === "bots" && <TgBots />}
-      {activeTab === "schedule" && <TgSchedule />}
+      {activeTab === "schedule" && <TgSchedule onOpenBots={() => setActiveTab("bots")} />}
       {activeTab === "templates" && <TgTemplates />}
       {activeTab === "moderation" && <TgModeration />}
     </div>

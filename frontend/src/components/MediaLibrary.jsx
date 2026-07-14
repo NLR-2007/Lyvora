@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { apiFetch, getApiUrl, getToken } from "../api";
 import {
-  Upload, Trash2, Image, Film, FileText, Music, FolderOpen,
-  Search, Grid, List, Download, Eye, Loader2, X
+  Upload, Trash2, Image, Film, FileText, Music,
+  Grid, List, Download, Eye, Loader2, X
 } from "lucide-react";
 import AuthenticatedMedia from "./AuthenticatedMedia";
 
@@ -17,7 +17,7 @@ export default function MediaLibrary() {
   const [previewError, setPreviewError] = useState("");
   const [dragOver, setDragOver] = useState(false);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     setLoading(true);
     try {
       let url = "/api/media";
@@ -32,11 +32,11 @@ export default function MediaLibrary() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter.file_type, filter.folder]);
 
-  useEffect(() => { fetchFiles(); }, [filter.folder, filter.file_type]);
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
-  const handleUpload = async (fileList) => {
+  const handleUpload = useCallback(async (fileList) => {
     setUploading(true);
     try {
       for (const file of fileList) {
@@ -60,7 +60,7 @@ export default function MediaLibrary() {
     } finally {
       setUploading(false);
     }
-  };
+  }, [fetchFiles, filter.folder]);
 
   const handleDelete = async (id) => {
     if (!confirm("Delete this file?")) return;
@@ -77,7 +77,7 @@ export default function MediaLibrary() {
     e.preventDefault();
     setDragOver(false);
     if (e.dataTransfer.files.length) handleUpload(Array.from(e.dataTransfer.files));
-  }, [filter.folder]);
+  }, [handleUpload]);
 
   const typeIcon = (type) => {
     switch (type) {
@@ -200,6 +200,7 @@ export default function MediaLibrary() {
             ))}
           </div>
         ) : (
+          <div className="table-container">
           <table className="data-table" style={{ width: "100%" }}>
             <thead>
               <tr><th>Name</th><th>Type</th><th>Size</th><th>Folder</th><th>Uploaded</th><th></th></tr>
@@ -223,6 +224,7 @@ export default function MediaLibrary() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

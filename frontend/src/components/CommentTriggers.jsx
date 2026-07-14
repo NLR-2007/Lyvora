@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../api";
-import { Plus, Trash2, Link, FileText, CheckCircle2, XCircle, Loader2, Sparkles, MessageCircle } from "lucide-react";
+import { Plus, Trash2, Link, CheckCircle2, XCircle, Sparkles, MessageCircle } from "lucide-react";
 
 export default function CommentTriggers() {
   const [monitors, setMonitors] = useState([]);
@@ -13,10 +13,7 @@ export default function CommentTriggers() {
   const [templateId, setTemplateId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
-
-  const fetchData = async () => {
-    setFetching(true);
+  const fetchData = useCallback(async () => {
     try {
       const [postsData, templatesData, accountsData, historyData] = await Promise.all([
         apiFetch("/api/posts"),
@@ -33,16 +30,14 @@ export default function CommentTriggers() {
       }
     } catch (e) {
       console.error("Failed to load comment triggers data:", e);
-    } finally {
-      setFetching(false);
     }
-  };
+  }, [accountId]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 6000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const handleAddMonitor = async (e) => {
     e.preventDefault();
@@ -196,12 +191,12 @@ export default function CommentTriggers() {
             </h4>
             <div style={{ color: "var(--text-secondary)", fontSize: "13px", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: "12px" }}>
               <p>
-                When a user leaves a comment on your post containing your **Trigger Word/Letter**, the backend Playwright script automatically detects it, opens their profile page, and sends them your connected DM template.
+                When a user leaves a comment on your post containing your <strong>Trigger Word/Letter</strong>, the backend <span className="playwright-highlight">Playwright</span> script automatically detects it, opens their profile page, and sends them your connected DM template.
               </p>
               <ul style={{ paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                <li>• **Case-Insensitive**: Matches whether comments are lowercase or uppercase (e.g. `java`, `JAVA` or `Java` all trigger outreach).</li>
-                <li>• **Deduplication Check**: The bot keeps track of commenter history. It will only send **one** trigger message per user, per post.</li>
-                <li>• **Stealth Speed**: A delay of 45-120 seconds will be enforced between comment-triggered DMs to keep your account safe.</li>
+                <li><strong>Case-insensitive:</strong> Matches lowercase and uppercase comments, such as “java”, “JAVA”, or “Java”.</li>
+                <li><strong>Duplicate protection:</strong> Sends only one trigger message per user for each post.</li>
+                <li><strong>Safer delivery:</strong> Uses the configured delay between comment-triggered DMs.</li>
               </ul>
             </div>
           </div>
@@ -324,7 +319,19 @@ export default function CommentTriggers() {
                       )}
                     </td>
                     <td>
-                      {new Date(item.processed_at).toLocaleString()}
+                      {new Date(
+                        /(?:Z|[+-]\d{2}:?\d{2})$/.test(item.processed_at)
+                          ? item.processed_at
+                          : `${item.processed_at}Z`
+                      ).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })} IST
                     </td>
                   </tr>
                 ))}
