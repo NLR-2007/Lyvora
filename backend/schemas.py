@@ -305,3 +305,15 @@ class AuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── AI (Sophie) Schemas ─────────────────────────────────────────────────────
+
+class AISophieRequest(BaseModel):
+    prompt: str
+    platform: Optional[str] = "instagram"
+    tone: Optional[str] = "friendly"
+
+class AISophieResponse(BaseModel):
+    text: str
+

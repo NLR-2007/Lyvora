@@ -81,6 +81,50 @@ export default function Messages() {
   const textareaRef = useRef(null);
   const editorRef = useRef(null);
 
+  const [showSophie, setShowSophie] = useState(false);
+  const [sophiePrompt, setSophiePrompt] = useState("");
+  const [sophiePlatform, setSophiePlatform] = useState("instagram");
+  const [sophieTone, setSophieTone] = useState("friendly");
+  const [sophieLoading, setSophieLoading] = useState(false);
+  const [sophieResult, setSophieResult] = useState("");
+  const [sophieError, setSophieError] = useState("");
+
+  const handleSophieGenerate = async (e) => {
+    e.preventDefault();
+    if (!sophiePrompt.trim()) return;
+    setSophieLoading(true);
+    setSophieError("");
+    setSophieResult("");
+    try {
+      const data = await apiFetch("/api/ai/sophie", {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: sophiePrompt.trim(),
+          platform: sophiePlatform,
+          tone: sophieTone,
+        }),
+      });
+      setSophieResult(data.text);
+    } catch (err) {
+      setSophieError(err.message || "Failed to generate template from Sophie AI.");
+    } finally {
+      setSophieLoading(false);
+    }
+  };
+
+  const handleApplySophieResult = () => {
+    if (!sophieResult) return;
+    setContent(sophieResult);
+    setMode("spintax");
+    if (!name.trim()) {
+      setName(`${sophiePlatform.charAt(0).toUpperCase() + sophiePlatform.slice(1)} - ${sophieTone.charAt(0).toUpperCase() + sophieTone.slice(1)} AI Template`);
+    }
+    setShowSophie(false);
+    setSophiePrompt("");
+    setSophieResult("");
+  };
+
+
   const fetchTemplates = async () => {
     try {
       const data = await apiFetch("/api/messages");
@@ -323,6 +367,168 @@ export default function Messages() {
               <PenLine size={14} /> Manual Spintax
             </button>
           </div>
+
+          <style>{`
+            @keyframes sophie-spin {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(360deg); }
+            }
+            .sophie-spin {
+              animation: sophie-spin 1.2s linear infinite;
+            }
+          `}</style>
+
+          {/* Sophie AI Assistant Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowSophie(!showSophie)}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              marginBottom: "20px",
+              background: "linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(236, 72, 153, 0.15) 100%)",
+              border: "1px solid rgba(168, 85, 247, 0.3)",
+              borderRadius: "10px",
+              color: "var(--text-primary)",
+              fontWeight: "600",
+              fontSize: "13.5px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              boxShadow: "0 4px 15px rgba(168, 85, 247, 0.05)",
+              transition: "all 0.2s"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Sparkles size={16} style={{ color: "#d946ef" }} />
+              <span>Ask Sophie AI Copywriter</span>
+            </div>
+            <span style={{ fontSize: "11px", opacity: 0.8 }}>{showSophie ? "Hide Assistant" : "Need ideas? Ask Sophie"}</span>
+          </button>
+
+          {/* Sophie AI Assistant Panel */}
+          {showSophie && (
+            <div
+              style={{
+                padding: "18px",
+                borderRadius: "10px",
+                background: "rgba(168, 85, 247, 0.04)",
+                border: "1px solid rgba(168, 85, 247, 0.25)",
+                marginBottom: "20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px"
+              }}
+            >
+              <div style={{ fontSize: "12.5px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+                Tell Sophie what kind of message you want to generate. She will write a spintax template automatically using NVIDIA NIM GPU models.
+              </div>
+              
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "12px", color: "var(--text-primary)", fontWeight: "600" }}>What should this outreach message say?</label>
+                <textarea
+                  className="form-input"
+                  style={{ height: "70px", fontSize: "12.5px", padding: "8px 12px", resize: "none", border: "1px solid var(--border-color)" }}
+                  placeholder="e.g. A friendly welcome message offering a link to download our free local SEO checklist..."
+                  value={sophiePrompt}
+                  onChange={(e) => setSophiePrompt(e.target.value)}
+                  disabled={sophieLoading}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ flex: 1 }}>
+                  <label className="form-label" style={{ fontSize: "11px", color: "var(--text-muted)" }}>Target Platform</label>
+                  <select
+                    className="form-input"
+                    style={{ height: "36px", padding: "0 10px", fontSize: "12px" }}
+                    value={sophiePlatform}
+                    onChange={(e) => setSophiePlatform(e.target.value)}
+                    disabled={sophieLoading}
+                  >
+                    <option value="instagram">Instagram DM</option>
+                    <option value="telegram">Telegram Post</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="form-label" style={{ fontSize: "11px", color: "var(--text-muted)" }}>Tone of Voice</label>
+                  <select
+                    className="form-input"
+                    style={{ height: "36px", padding: "0 10px", fontSize: "12px" }}
+                    value={sophieTone}
+                    onChange={(e) => setSophieTone(e.target.value)}
+                    disabled={sophieLoading}
+                  >
+                    <option value="friendly">Friendly & Warm</option>
+                    <option value="professional">Professional & Direct</option>
+                    <option value="casual">Casual & Conversational</option>
+                    <option value="urgent">Direct & Urgent</option>
+                    <option value="educational">Educational & Value-focused</option>
+                  </select>
+                </div>
+              </div>
+
+              {sophieError && (
+                <div style={{ color: "#ef4444", fontSize: "12px", background: "rgba(239, 68, 68, 0.05)", padding: "8px", borderRadius: "6px", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
+                  {sophieError}
+                </div>
+              )}
+
+              {sophieResult && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
+                  <label className="form-label" style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: 0 }}>Sophie's Output (Spintax template):</label>
+                  <div
+                    style={{
+                      padding: "12px",
+                      background: "var(--bg-secondary)",
+                      border: "1px solid rgba(168, 85, 247, 0.25)",
+                      borderRadius: "8px",
+                      fontFamily: "monospace",
+                      fontSize: "12.5px",
+                      lineHeight: "1.5",
+                      color: "var(--text-primary)",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word"
+                    }}
+                  >
+                    {sophieResult}
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ height: "36px", padding: "0 14px", background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", border: "none", fontSize: "12px", fontWeight: "600" }}
+                      onClick={handleApplySophieResult}
+                    >
+                      Use this Template
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ height: "36px", padding: "0 12px", fontSize: "12px" }}
+                      onClick={() => setSophieResult("")}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!sophieResult && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ height: "36px", padding: "0 14px", alignSelf: "flex-start", background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", border: "none", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}
+                  onClick={handleSophieGenerate}
+                  disabled={sophieLoading || !sophiePrompt.trim()}
+                >
+                  {sophieLoading ? <RefreshCw size={12} className="sophie-spin" /> : <Wand2 size={12} />}
+                  {sophieLoading ? "Sophie is writing..." : "Write with Sophie"}
+                </button>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSaveTemplate}>
             <div className="form-group">

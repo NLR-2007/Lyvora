@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     META_WEBHOOK_VERIFY_TOKEN: str = Field(default="")
     META_GRAPH_API_VERSION: str = Field(default="v23.0")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24)
+    NVIDIA_API_KEY: str = Field(default="***REMOVED-ROTATE-THIS-KEY***")
 
     # SaaS defaults
     DEFAULT_PLAN: str = Field(default="starter")

@@ -25,6 +25,7 @@ from backend.schemas import (
     ContactCreate, ContactUpdate, ContactResponse,
     FeatureFlagCreate, FeatureFlagUpdate, FeatureFlagResponse,
     AnalyticsDashboardResponse, AnalyticsPointSchema, AuditLogResponse,
+    AISophieRequest, AISophieResponse,
 )
 from backend.auth import (
     verify_password, get_password_hash, create_access_token,
@@ -1051,6 +1052,77 @@ def delete_message(id: int, current_user: User = Depends(get_current_user), work
     db.delete(tpl)
     db.commit()
     return {"message": "Template deleted."}
+
+@app.post("/api/ai/sophie", response_model=AISophieResponse)
+async def ask_sophie_ai(
+    payload: AISophieRequest,
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db)
+):
+    api_key = settings.NVIDIA_API_KEY.strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="NVIDIA API key not configured on backend.")
+    
+    system_instruction = (
+        "You are Sophie, a helpful and highly creative AI copywriting assistant integrated into the Lyvora platform.\n"
+        "Your task is to write high-converting outreach messages for social media automation.\n"
+        f"Platform target: {payload.platform} (e.g. Instagram DMs or Telegram broadcasts).\n"
+        f"Tone of voice: {payload.tone}.\n"
+        "You MUST generate messages that contain spintax variations (e.g., '{Hello|Hi|Hey} {username}, {how are you|hope you're well}!') to keep the messages unique and natural.\n"
+        "Remember to use the placeholder '{username}' or '@username' (for Instagram) or '{username}' (for general) where the recipient's username should be inserted.\n"
+        "Format the message cleanly. Output ONLY the message template. Do not include any intros, explanation, or markdown formatting blocks like ```."
+    )
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": "meta/llama-3.1-8b-instruct",
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": payload.prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1024
+    }
+    
+    url = "https://integrate.api.nvidia.com/v1/chat/completions"
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=data)
+            
+            if response.status_code != 200:
+                error_detail = response.text
+                log_to_db("ERROR", f"[AI] Sophie API error: {response.status_code} - {error_detail}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"NVIDIA API responded with error status {response.status_code}."
+                )
+                
+            resp_json = response.json()
+            generated_text = resp_json["choices"][0]["message"]["content"].strip()
+            
+            if generated_text.startswith("```"):
+                lines = generated_text.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                generated_text = "\n".join(lines).strip()
+                
+            log_to_db("INFO", f"User '{current_user.username}' generated template using Sophie AI assistant.")
+            return AISophieResponse(text=generated_text)
+            
+    except httpx.RequestError as exc:
+        log_to_db("ERROR", f"[AI] Sophie network request failed: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="NVIDIA NIM API server connection timed out or failed. Please check backend internet connectivity."
+        )
 
 # Monitored Posts CRUD
 @app.get("/api/posts", response_model=List[MonitoredPostResponse])
