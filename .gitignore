@@ -36,3 +36,10 @@ text.txt
 *.mp4
 *.webm
 
+# Test and tooling artefacts
+.pytest_cache/
+frontend/dist/
+
+# Note: backend/migrations/versions/ is intentionally NOT ignored —
+# migration scripts must be committed and applied in order.
+
