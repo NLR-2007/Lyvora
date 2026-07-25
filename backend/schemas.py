@@ -1,6 +1,32 @@
+import re
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
+
+# An uploaded attachment is referenced by its stored file name only. Anything
+# with a separator, a drive letter, or ".." is refused here so a scheduled post
+# can never point the sender at a file outside the upload directory.
+_SAFE_UPLOAD_NAME = re.compile(r"^[A-Za-z0-9._\- ]{1,255}$")
+
+
+def validate_media_path(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return value
+    if value.startswith(("http://", "https://")):
+        return value
+    if ".." in value or not _SAFE_UPLOAD_NAME.match(value):
+        raise ValueError("media_path must be an uploaded file name or an http(s) URL")
+    return value
+
+
+def validate_batch_messages(value: Optional[list]) -> Optional[list]:
+    """Each follow-up message carries its own attachment, so apply the same rule."""
+    if not value:
+        return value
+    for message in value:
+        if isinstance(message, dict):
+            validate_media_path(message.get("media_path"))
+    return value
 
 # --- Auth Schemas ---
 class UserRegisterSchema(BaseModel):
@@ -164,6 +190,9 @@ class TgScheduledPostCreate(BaseModel):
     recurrence_rule: Optional[str] = None
     batch_messages: Optional[list] = None
 
+    _check_media_path = field_validator("media_path")(validate_media_path)
+    _check_batch = field_validator("batch_messages")(validate_batch_messages)
+
 class TgScheduledPostUpdate(BaseModel):
     content: Optional[str] = None
     scheduled_at: Optional[datetime] = None
@@ -173,6 +202,9 @@ class TgScheduledPostUpdate(BaseModel):
     is_recurring: Optional[bool] = None
     recurrence_rule: Optional[str] = None
     batch_messages: Optional[list] = None
+
+    _check_media_path = field_validator("media_path")(validate_media_path)
+    _check_batch = field_validator("batch_messages")(validate_batch_messages)
 
 class TgModerationRuleCreate(BaseModel):
     channel_id: int

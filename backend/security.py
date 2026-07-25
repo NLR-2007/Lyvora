@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 from typing import Any, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -68,6 +69,25 @@ def mask_secret(value: Optional[str], visible: int = 4) -> str:
 
 def secret_configured(value: Optional[str]) -> bool:
     return bool(decrypt_secret(value))
+
+
+def resolve_upload_path(base_dir: str, filename: Optional[str]) -> Optional[str]:
+    """Resolve an upload name inside base_dir, or None if it escapes.
+
+    Windows treats a backslash as a path separator, so `..\\..\\.env` walks out
+    of the upload directory even though the URL router only ever sees a single
+    path segment. Comparing fully resolved paths is the check that holds on
+    both platforms, and it also rejects absolute paths and symlinks.
+    """
+    if not filename:
+        return None
+    base = os.path.realpath(base_dir)
+    candidate = os.path.realpath(os.path.join(base, filename))
+    if candidate != base and not candidate.startswith(base + os.sep):
+        return None
+    if not os.path.isfile(candidate):
+        return None
+    return candidate
 
 
 def stable_hash(value: str) -> str:

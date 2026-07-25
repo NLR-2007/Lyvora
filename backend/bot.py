@@ -9,7 +9,7 @@ import threading
 from zoneinfo import ZoneInfo
 from playwright.async_api import async_playwright, Page, BrowserContext
 from sqlalchemy.orm import Session
-from backend.database import SessionLocal, Account, Target, MessageTemplate, BotLog, Setting, MetaConnection, log_to_db, MonitoredPost, ProcessedComment, OptOut, User
+from backend.database import SessionLocal, Account, Target, MessageTemplate, BotLog, MetaConnection, log_to_db, MonitoredPost, ProcessedComment, OptOut, User, get_system_setting, set_system_setting, get_workspace_settings
 from backend.config import settings
 from backend.security import decrypt_secret
 
@@ -1244,25 +1244,12 @@ async def bot_worker_loop():
     while BOT_RUNNING:
         db = SessionLocal()
         try:
-            # 1. Check if we are active
-            db_status = db.query(Setting).filter(Setting.key == "status").first()
-            if not db_status or db_status.value != "running":
+            # 1. Check if the engine is switched on (system-wide, admin controlled)
+            if get_system_setting(db, "status") != "running":
                 log_to_db("INFO", "Bot status is not set to 'running' in settings. Stopping loop.")
                 BOT_RUNNING = False
                 break
-                
-            # 2. Get active config parameters
-            setting_rows = {row.key: row.value for row in db.query(Setting).all()}
-            daily_limit = max(1, int(setting_rows.get("daily_limit", "30")))
-            min_delay = max(10, int(setting_rows.get("min_delay", "45")))
-            max_delay = max(min_delay, int(setting_rows.get("max_delay", "120")))
-            work_start = setting_rows.get("working_hours_start", "08:00")
-            work_end = setting_rows.get("working_hours_end", "22:00")
 
-            if not is_within_working_hours(work_start, work_end):
-                await asyncio.sleep(60)
-                continue
-            
             # Fetch connected accounts only for users who have activated their automation
             active_user_ids = [u.id for u in db.query(User).filter(User.automation_active == True).all()]
             if not active_user_ids:
@@ -1285,6 +1272,19 @@ async def bot_worker_loop():
             for active_account in active_accounts:
                 if not BOT_RUNNING:
                     break
+
+                # 2. Config is per-tenant: limits, pacing and working hours all
+                # belong to the account's workspace, never to the whole engine.
+                ws_settings = get_workspace_settings(db, active_account.workspace_id)
+                daily_limit = max(1, int(ws_settings["daily_limit"]))
+                min_delay = max(10, int(ws_settings["min_delay"]))
+                max_delay = max(min_delay, int(ws_settings["max_delay"]))
+
+                if not is_within_working_hours(
+                    ws_settings["working_hours_start"],
+                    ws_settings["working_hours_end"],
+                ):
+                    continue
 
                 # Official mode is tenant-specific. Never let one customer's
                 # Meta connection pause Playwright for every other workspace.
@@ -1372,9 +1372,12 @@ async def bot_worker_loop():
                                     log_to_db("ERROR", f"[SAFETY] Refused invalid or mismatched comment recipient @{username}.")
                                     continue
                                 
-                                # 1. Opt-out keyword check
-                                opt_out_setting = db.query(Setting).filter(Setting.key == "opt_out_keywords").first()
-                                opt_out_keywords = [k.strip().lower() for k in (opt_out_setting.value if opt_out_setting else "").split(",") if k.strip()]
+                                # 1. Opt-out keyword check (this tenant's word list)
+                                opt_out_keywords = [
+                                    k.strip().lower()
+                                    for k in ws_settings["opt_out_keywords"].split(",")
+                                    if k.strip()
+                                ]
                                 if comment_text.strip().lower() in opt_out_keywords:
                                     exists = db.query(OptOut).filter(
                                         OptOut.username == username.lower(),
@@ -1573,10 +1576,8 @@ def start_bot_background():
         
     db = SessionLocal()
     try:
-        status_setting = db.query(Setting).filter(Setting.key == "status").first()
-        if status_setting:
-            status_setting.value = "running"
-            db.commit()
+        set_system_setting(db, "status", "running")
+        db.commit()
     finally:
         db.close()
         
@@ -1604,10 +1605,8 @@ def stop_bot_background():
     try:
         db = SessionLocal()
         try:
-            status_setting = db.query(Setting).filter(Setting.key == "status").first()
-            if status_setting:
-                status_setting.value = "stopped"
-                db.commit()
+            set_system_setting(db, "status", "stopped")
+            db.commit()
         finally:
             db.close()
     except Exception as e:

@@ -1,6 +1,8 @@
 import os
+import secrets
 import bcrypt
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
@@ -136,6 +138,20 @@ class AuditLog(Base):
     metadata_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class LoginAttempt(Base):
+    """One row per failed login.
+
+    Kept in the database rather than a module dict so the limit survives a
+    restart, holds across multiple API workers, and cannot be grown without
+    bound by an attacker cycling usernames (expired rows are swept on read).
+    """
+    __tablename__ = "login_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username_key = Column(String(100), index=True, nullable=False)
+    attempted_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+
+
 class Account(Base):
     __tablename__ = "accounts"
     
@@ -188,9 +204,21 @@ class BotLog(Base):
     message = Column(Text, nullable=False)
 
 class Setting(Base):
+    """Key/value configuration, scoped per tenant.
+
+    `workspace_id` is NULL only for engine-wide keys (SYSTEM_SETTING_KEYS, e.g.
+    the master run/stop switch the admin controls). Every operational key —
+    limits, delays, working hours, opt-out words — belongs to one workspace so
+    one tenant's settings can never alter another tenant's sending behaviour.
+    """
     __tablename__ = "settings"
-    
-    key = Column(String(100), primary_key=True)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "key", name="uq_setting_workspace_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
+    key = Column(String(100), nullable=False, index=True)
     value = Column(Text, nullable=False)
 
 
@@ -281,7 +309,10 @@ class TgChannel(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
 
     bot_id = Column(Integer, ForeignKey("tg_bot_configs.id", ondelete="CASCADE"), nullable=False)
+    # Tracks which user added/discovered this channel
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     bot = relationship("TgBotConfig", back_populates="channels")
+    added_by = relationship("User", foreign_keys=[user_id])
     scheduled_posts = relationship("TgScheduledPost", back_populates="channel", cascade="all, delete-orphan")
     moderation_rules = relationship("TgModerationRule", back_populates="channel", cascade="all, delete-orphan")
 
@@ -457,10 +488,19 @@ def _table_columns(conn, table_name: str) -> set[str]:
 
 
 def _add_nullable_int_column(conn, table_name: str, column_name: str):
-    columns = _table_columns(conn, table_name)
-    if column_name in columns:
-        return
-    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} INTEGER"))
+    """
+    Safely add a nullable integer column if it doesn't already exist.
+    Uses try/except instead of SHOW COLUMNS to avoid hitting the
+    information_schema on MariaDB (which can crash if internal tables are corrupt).
+    """
+    try:
+        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} INTEGER"))
+    except Exception as e:
+        err = str(e).lower()
+        # Column already exists — that's fine
+        if "duplicate column" in err or "already exists" in err or "1060" in err:
+            return
+        raise
 
 
 def ensure_saas_columns():
@@ -476,6 +516,8 @@ def ensure_saas_columns():
         ("tg_bot_configs", "bot_token_hash"),
         ("tg_scheduled_posts", "message_type"),
         ("tg_scheduled_posts", "batch_messages"),
+        # Track which user added each channel/group
+        ("tg_channels", "user_id"),
     ]
     with engine.begin() as conn:
         for table_name, column_name in targets:
@@ -560,29 +602,137 @@ def ensure_default_workspaces():
     finally:
         db.close()
 
+# ── Settings access ──────────────────────────────────────────────────────────
+# Keys that describe the engine itself rather than any one tenant. Only an
+# admin changes these, and they are stored with workspace_id = NULL.
+SYSTEM_SETTING_KEYS = {"status"}
+
+# Per-tenant operational defaults. A workspace that has never saved settings
+# reads these, so there is no seeding step and no shared row to drift.
+DEFAULT_WORKSPACE_SETTINGS = {
+    "daily_limit": "30",
+    "min_delay": "45",
+    "max_delay": "120",
+    "working_hours_start": "08:00",
+    "working_hours_end": "22:00",
+    "opt_out_keywords": "stop, unsubscribe, optout, stopdm",
+    "consent_enforce": "true",
+}
+
+
+def get_system_setting(db, key: str, default: Optional[str] = None) -> Optional[str]:
+    row = db.query(Setting).filter(Setting.workspace_id.is_(None), Setting.key == key).first()
+    return row.value if row else default
+
+
+def set_system_setting(db, key: str, value: str) -> None:
+    row = db.query(Setting).filter(Setting.workspace_id.is_(None), Setting.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(Setting(workspace_id=None, key=key, value=value))
+
+
+def get_workspace_settings(db, workspace_id: Optional[int]) -> dict:
+    """Operational settings for one tenant, with platform defaults filled in."""
+    values = dict(DEFAULT_WORKSPACE_SETTINGS)
+    if workspace_id is None:
+        return values
+    for row in db.query(Setting).filter(Setting.workspace_id == workspace_id).all():
+        values[row.key] = row.value
+    return values
+
+
+def set_workspace_setting(db, workspace_id: int, key: str, value: str) -> None:
+    row = db.query(Setting).filter(
+        Setting.workspace_id == workspace_id,
+        Setting.key == key,
+    ).first()
+    if row:
+        row.value = value
+    else:
+        db.add(Setting(workspace_id=workspace_id, key=key, value=value))
+
+
+def ensure_settings_workspace_scope():
+    """Give `settings` a (workspace_id, key) identity.
+
+    Before this the table was one global key/value store, so every tenant shared
+    a single daily limit and working-hours window. Existing values are copied
+    onto every workspace, leaving observable behaviour unchanged across upgrade.
+    """
+    quoted_key = "`key`" if engine.dialect.name.lower().startswith("mysql") else '"key"'
+
+    with engine.begin() as conn:
+        columns = _table_columns(conn, "settings")
+        if not columns or "workspace_id" in columns:
+            return
+
+        legacy = {
+            row[0]: row[1]
+            for row in conn.execute(text(f"SELECT {quoted_key}, value FROM settings")).fetchall()
+        }
+        workspace_ids = [row[0] for row in conn.execute(text("SELECT id FROM workspaces")).fetchall()]
+
+        # Keep the old rows reachable until the new table is populated.
+        conn.execute(text("ALTER TABLE settings RENAME TO settings_pre_workspace"))
+        Setting.__table__.create(bind=conn)
+
+        rows = []
+        for key, value in legacy.items():
+            if key in SYSTEM_SETTING_KEYS:
+                rows.append({"workspace_id": None, "key": key, "value": value})
+            elif key in DEFAULT_WORKSPACE_SETTINGS:
+                rows.extend(
+                    {"workspace_id": workspace_id, "key": key, "value": value}
+                    for workspace_id in workspace_ids
+                )
+        if rows:
+            conn.execute(Setting.__table__.insert(), rows)
+
+        conn.execute(text("DROP TABLE settings_pre_workspace"))
+
+    print(f"[INFO] Migrated `settings` to per-workspace scope ({len(workspace_ids)} workspaces).")
+
+
+def stamp_alembic_head_if_unversioned():
+    """Mark a database built by create_all() as being at the latest revision.
+
+    init_db() still creates tables directly, so a fresh install would otherwise
+    have no version row and `alembic upgrade head` would try to create tables
+    that already exist. Databases that already carry a version are left alone.
+    """
+    try:
+        from alembic import command
+        from alembic.config import Config
+        from alembic.runtime.migration import MigrationContext
+
+        with engine.connect() as conn:
+            if MigrationContext.configure(conn).get_current_revision() is not None:
+                return
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config = Config(os.path.join(root, "alembic.ini"))
+        command.stamp(config, "head")
+        print("[INFO] Stamped database at latest Alembic revision.")
+    except Exception as e:
+        print(f"[WARNING] Could not stamp Alembic revision: {e}")
+
+
 # Initialize tables
 def init_db():
     Base.metadata.create_all(bind=engine)
     ensure_saas_columns()
     ensure_default_workspaces()
-    
-    # Insert default settings if they don't exist
+    ensure_settings_workspace_scope()
+    stamp_alembic_head_if_unversioned()
+
     db = SessionLocal()
     try:
-        default_settings = [
-            {"key": "daily_limit", "value": "30"},
-            {"key": "min_delay", "value": "45"},
-            {"key": "max_delay", "value": "120"},
-            {"key": "working_hours_start", "value": "08:00"},
-            {"key": "working_hours_end", "value": "22:00"},
-            {"key": "status", "value": "stopped"}, # running, stopped
-            {"key": "opt_out_keywords", "value": "stop, unsubscribe, optout, stopdm"},
-            {"key": "consent_enforce", "value": "true"},
-        ]
-        for s in default_settings:
-            exists = db.query(Setting).filter(Setting.key == s["key"]).first()
-            if not exists:
-                db.add(Setting(key=s["key"], value=s["value"]))
+        # Per-workspace keys need no seeding — DEFAULT_WORKSPACE_SETTINGS covers
+        # any workspace that has not saved its own. Only the engine switch is global.
+        if get_system_setting(db, "status") is None:
+            set_system_setting(db, "status", "stopped")  # running, stopped
         # Remove the pre-SaaS global credential rows. Official connections are
         # now encrypted and isolated in meta_connections per workspace.
         db.query(Setting).filter(Setting.key.in_([
@@ -595,7 +745,8 @@ def init_db():
         # Seed default admin user
         admin_exists = db.query(User).filter(User.username == "admin").first()
         if not admin_exists:
-            hashed = bcrypt.hashpw("***REMOVED-CHANGE-THIS-PASSWORD***".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            initial_password = os.environ.get("ADMIN_INITIAL_PASSWORD") or secrets.token_urlsafe(16)
+            hashed = bcrypt.hashpw(initial_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             admin_user = User(
                 username="admin",
                 email="admin@lyvora.com",
@@ -616,6 +767,10 @@ def init_db():
             db.add(Subscription(workspace_id=ws.id, plan_slug=ws.plan_slug, status="trialing"))
             db.commit()
             print("[INFO] Default admin user created (admin / admin@lyvora.com)")
+            if not os.environ.get("ADMIN_INITIAL_PASSWORD"):
+                print(f"[INFO] Generated admin password: {initial_password}")
+                print("[INFO] Save it now and change it after first login. "
+                      "Set ADMIN_INITIAL_PASSWORD to choose your own.")
 
     except Exception as e:
         print(f"Failed to seed default settings: {e}")

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from backend.config import settings
-from backend.database import get_db, Setting, MetaConnection, Account, MonitoredPost, ProcessedComment, OptOut, log_to_db, MessageTemplate
+from backend.database import get_db, MetaConnection, Account, MonitoredPost, ProcessedComment, OptOut, log_to_db, MessageTemplate, get_workspace_settings
 from backend.bot import parse_spintax
 from backend.security import decrypt_secret, verify_meta_signature
 from typing import Dict, Any
@@ -90,9 +90,9 @@ async def process_incoming_comment(value: Dict[str, Any], connection: MetaConnec
 
     log_to_db("INFO", f"[Meta Webhook] Received comment from @{commenter_username}: '{comment_text}'")
 
-    # 1. Opt-out keyword check
-    opt_out_setting = db.query(Setting).filter(Setting.key == "opt_out_keywords").first()
-    opt_out_keywords = [k.strip().lower() for k in (opt_out_setting.value if opt_out_setting else "").split(",") if k.strip()]
+    # 1. Opt-out keyword check (the connected workspace's own word list)
+    ws_settings = get_workspace_settings(db, connection.workspace_id)
+    opt_out_keywords = [k.strip().lower() for k in ws_settings["opt_out_keywords"].split(",") if k.strip()]
     
     if comment_text.lower() in opt_out_keywords:
         exists = db.query(OptOut).filter(

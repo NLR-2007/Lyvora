@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.config import cors_origins, cors_origin_regex, validate_runtime_config, settings
-from backend.database import get_db, init_db, Account, Target, MessageTemplate, BotLog, Setting, MetaConnection, log_to_db, SessionLocal, MonitoredPost, ProcessedComment, OptOut, User, TgBotConfig, TgChannel, TgMessageTemplate, TgScheduledPost, TgModerationRule, TgPostLog, Workspace, WorkspaceMember, Subscription, Campaign, AutomationRunner, AuditLog, Notification, MediaFile, Contact, FeatureFlag
+from backend.database import get_db, init_db, Account, Target, MessageTemplate, BotLog, Setting, MetaConnection, log_to_db, SessionLocal, MonitoredPost, ProcessedComment, OptOut, User, TgBotConfig, TgChannel, TgMessageTemplate, TgScheduledPost, TgModerationRule, TgPostLog, Workspace, WorkspaceMember, Subscription, Campaign, AutomationRunner, AuditLog, Notification, MediaFile, Contact, FeatureFlag, LoginAttempt, get_system_setting, set_system_setting, get_workspace_settings, set_workspace_setting
 from backend.schemas import (
     UserRegisterSchema, UserLoginSchema, TokenResponse, UserResponseSchema,
     AccountSchema, AccountResponse, MonitoredPostCreate, MonitoredPostResponse,
@@ -172,7 +172,8 @@ PLAN_LIMITS = {
     },
 }
 
-LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+LOGIN_WINDOW_SECONDS = 900
+LOGIN_MAX_ATTEMPTS = 8
 
 
 class WorkspaceCreateSchema(BaseModel):
@@ -260,24 +261,30 @@ def audit(db: Session, action: str, user: Optional[User] = None, workspace: Opti
     ))
 
 
-def check_login_rate_limit(username: str):
+def check_login_rate_limit(db: Session, username: str):
     """Reject a username only after too many recent failed logins."""
-    now = time.time()
-    window_start = now - 900
-    key = username.lower()
-    attempts = [ts for ts in LOGIN_ATTEMPTS.get(key, []) if ts >= window_start]
-    LOGIN_ATTEMPTS[key] = attempts
-    if len(attempts) >= 8:
+    cutoff = datetime.utcnow() - timedelta(seconds=LOGIN_WINDOW_SECONDS)
+    # Sweep expired rows on the way through so the table stays bounded.
+    db.query(LoginAttempt).filter(LoginAttempt.attempted_at < cutoff).delete(synchronize_session=False)
+    recent = db.query(LoginAttempt).filter(
+        LoginAttempt.username_key == username.lower(),
+        LoginAttempt.attempted_at >= cutoff,
+    ).count()
+    db.commit()
+    if recent >= LOGIN_MAX_ATTEMPTS:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
 
 
-def record_failed_login(username: str):
-    key = username.lower()
-    LOGIN_ATTEMPTS.setdefault(key, []).append(time.time())
+def record_failed_login(db: Session, username: str):
+    db.add(LoginAttempt(username_key=username.lower(), attempted_at=datetime.utcnow()))
+    db.commit()
 
 
-def clear_login_rate_limit(username: str):
-    LOGIN_ATTEMPTS.pop(username.lower(), None)
+def clear_login_rate_limit(db: Session, username: str):
+    db.query(LoginAttempt).filter(
+        LoginAttempt.username_key == username.lower()
+    ).delete(synchronize_session=False)
+    db.commit()
 
 # --- Authentication Endpoints ---
 
@@ -318,15 +325,15 @@ def register_user(payload: UserRegisterSchema, db: Session = Depends(get_db)):
 
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login_user(payload: UserLoginSchema, db: Session = Depends(get_db)):
-    check_login_rate_limit(payload.username)
+    check_login_rate_limit(db, payload.username)
     user = db.query(User).filter(User.username == payload.username).first()
     if not user or not verify_password(payload.password, user.password_hash):
-        record_failed_login(payload.username)
+        record_failed_login(db, payload.username)
         raise HTTPException(status_code=400, detail="Incorrect username or password.")
     if not getattr(user, "is_enabled", True):
         raise HTTPException(status_code=403, detail="This account is disabled.")
-        
-    clear_login_rate_limit(payload.username)
+
+    clear_login_rate_limit(db, payload.username)
     token = create_access_token(data={"sub": user.username})
     return {
         "access_token": token,
@@ -1233,11 +1240,7 @@ def get_settings(
     workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ):
-    settings_dict = {}
-    rows = db.query(Setting).all()
-    for row in rows:
-        if row.key not in {"meta_page_access_token", "meta_verify_token", "api_mode"}:
-            settings_dict[row.key] = row.value
+    settings_dict = get_workspace_settings(db, workspace.id)
     connection = db.query(MetaConnection).filter(MetaConnection.workspace_id == workspace.id).first()
     settings_dict["api_mode"] = "official" if connection and connection.is_active else "sandbox"
     settings_dict["meta_connection_configured"] = bool(connection and secret_configured(connection.access_token))
@@ -1301,11 +1304,7 @@ def update_settings(
         "consent_enforce": "true",
     }
     for k, v in items.items():
-        row = db.query(Setting).filter(Setting.key == k).first()
-        if row:
-            row.value = v
-        else:
-            db.add(Setting(key=k, value=v))
+        set_workspace_setting(db, workspace.id, k, v)
     db.commit()
     log_to_db("INFO", f"User '{current_user.username}' updated bot settings.")
     return {"message": "Settings saved successfully."}
@@ -1612,10 +1611,8 @@ async def admin_stop_all(current_admin: User = Depends(get_current_admin), db: S
     if telegram_service.is_running:
         await telegram_service.stop()
     try:
-        status_setting = db.query(Setting).filter(Setting.key == "status").first()
-        if status_setting:
-            status_setting.value = "stopped"
-            db.commit()
+        set_system_setting(db, "status", "stopped")
+        db.commit()
     except Exception:
         pass
     log_to_db("INFO", f"Admin {current_admin.username} stopped all automation systems (IG + TG)")
@@ -1674,7 +1671,14 @@ def tg_list_bots(current_user: User = Depends(get_current_user), db: Session = D
             "is_active": b.is_active, "created_at": b.created_at.isoformat(),
             "channel_count": len(b.channels),
             "channels": [
-                {"id": ch.id, "chat_id": ch.chat_id, "title": ch.title, "username": None, "chat_type": ch.chat_type}
+                {
+                    "id": ch.id,
+                    "chat_id": ch.chat_id,
+                    "title": ch.title,
+                    "username": None,
+                    "chat_type": ch.chat_type,
+                    "added_by": ch.added_by.username if ch.added_by else b.bot_username,
+                }
                 for ch in b.channels
             ]
         }
@@ -1718,7 +1722,11 @@ async def tg_refresh_channels(bot_id: int, current_user: User = Depends(get_curr
 
     channels = await telegram_service.fetch_bot_channels(bot_id, db)
     return [
-        {"id": c.id, "chat_id": c.chat_id, "title": c.title, "chat_type": c.chat_type, "member_count": c.member_count}
+        {
+            "id": c.id, "chat_id": c.chat_id, "title": c.title,
+            "chat_type": c.chat_type, "member_count": c.member_count,
+            "added_by": c.added_by.username if c.added_by else bot.bot_username,
+        }
         for c in channels
     ]
 
@@ -1735,7 +1743,9 @@ def tg_list_channels(current_user: User = Depends(get_current_user), workspace: 
         {
             "id": c.id, "chat_id": c.chat_id, "title": c.title,
             "chat_type": c.chat_type, "member_count": c.member_count,
-            "is_active": c.is_active, "bot_username": c.bot.bot_username,
+            "is_active": c.is_active,
+            "bot_username": c.bot.bot_username,
+            "added_by": c.added_by.username if c.added_by else c.bot.bot_username,
         }
         for c in channels
     ]
@@ -1775,11 +1785,19 @@ async def tg_add_channel_manual(
         chat_type=chat_info.get("type", "channel"),
         member_count=member_count,
         bot_id=bot_id,
+        user_id=current_user.id,
     )
     db.add(ch)
     db.commit()
     db.refresh(ch)
-    return {"id": ch.id, "chat_id": ch.chat_id, "title": ch.title, "chat_type": ch.chat_type, "member_count": ch.member_count}
+    return {
+        "id": ch.id,
+        "chat_id": ch.chat_id,
+        "title": ch.title,
+        "chat_type": ch.chat_type,
+        "member_count": ch.member_count,
+        "added_by": current_user.username,
+    }
 
 
 class TgTemplatePayload(BaseModel):
@@ -1852,9 +1870,9 @@ async def tg_upload_media(
     return {"filename": unique_name, "original_name": original_name, "size": len(content)}
 
 @app.get("/api/tg/uploads/{filename}")
-async def tg_get_upload(filename: str):
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(file_path):
+async def tg_get_upload(filename: str, current_user: User = Depends(get_current_user)):
+    file_path = resolve_upload_path(UPLOAD_DIR, filename)
+    if not file_path:
         raise HTTPException(404, "File not found")
     return FileResponse(file_path)
 

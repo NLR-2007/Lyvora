@@ -1,5 +1,5 @@
 import asyncio
-from backend.database import SessionLocal, Setting, log_to_db, init_db
+from backend.database import SessionLocal, set_system_setting, log_to_db, init_db
 from backend.bot import bot_worker_loop, BOT_RUNNING
 import backend.bot
 
@@ -12,11 +12,7 @@ async def main():
     # Set status to running in settings database
     db = SessionLocal()
     try:
-        status_setting = db.query(Setting).filter(Setting.key == "status").first()
-        if status_setting:
-            status_setting.value = "running"
-        else:
-            db.add(Setting(key="status", value="running"))
+        set_system_setting(db, "status", "running")
         db.commit()
         print("[SUCCESS] Set bot status to 'running' in database settings.")
     except Exception as e:

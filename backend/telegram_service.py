@@ -11,7 +11,7 @@ from backend.database import (
     SessionLocal, TgBotConfig, TgChannel, TgScheduledPost,
     TgModerationRule, TgPostLog, log_to_db,
 )
-from backend.security import decrypt_secret
+from backend.security import decrypt_secret, resolve_upload_path
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "tg")
@@ -97,6 +97,7 @@ class TelegramBotService:
                     chat_type=chat_info["chat_type"],
                     member_count=member_count,
                     bot_id=bot_id,
+                    user_id=bot.user_id,  # inherit from the bot owner
                 )
                 db.add(ch)
                 new_channels.append(ch)
@@ -134,8 +135,10 @@ class TelegramBotService:
     def _resolve_local_file(self, path: str) -> Optional[str]:
         if not path or path.startswith("http://") or path.startswith("https://"):
             return None
-        full_path = os.path.join(UPLOAD_DIR, path) if not os.path.isabs(path) else path
-        return full_path if os.path.exists(full_path) else None
+        # Only ever read back from the upload directory. Absolute paths and
+        # traversal are rejected so a scheduled post cannot make the bot
+        # upload arbitrary server files into a tenant's own channel.
+        return resolve_upload_path(UPLOAD_DIR, path)
 
     async def _upload_file(self, token: str, method: str, field: str, file_path: str, chat_id: int, caption: str, parse_mode: Optional[str]):
         token = decrypt_secret(token) or token
