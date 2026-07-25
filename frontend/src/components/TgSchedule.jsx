@@ -1,144 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { apiFetch, apiUpload, getApiUrl } from "../api";
 import QuickMediaPicker from "./QuickMediaPicker";
+import ToolbarButton from "./tgSchedule/ToolbarButton";
+import FileUploadArea from "./tgSchedule/FileUploadArea";
+import SophieAssistant from "./tgSchedule/SophieAssistant";
+import {
+  STATUS_COLORS, MSG_TYPES, labelStyle, displayMediaName,
+  insertTag, plainTextToHtml, defaultScheduleTime,
+} from "./tgSchedule/editorUtils";
 import {
   CalendarClock, Plus, Send, Trash2, Edit2,
   CheckCircle, XCircle, Clock, Repeat, X,
-  MessageSquare, Image, FileText, Layers,
+  Image, FileText,
   Bold, Italic, Code, Link2, Strikethrough, Underline,
-  Upload, FileUp, Eye, EyeOff, Library,
+  Eye, EyeOff, Library,
   RefreshCw,
 } from "lucide-react";
-
-const STATUS_COLORS = {
-  pending: "var(--warning)", processing: "var(--info)", sent: "var(--success)", failed: "var(--danger)", cancelled: "var(--text-muted)",
-};
-
-const MSG_TYPES = [
-  { value: "text", label: "Text", icon: MessageSquare },
-  { value: "media", label: "Media / File", icon: FileUp },
-  { value: "multi", label: "Multi", icon: Layers },
-];
-
-const displayMediaName = (path = "") => {
-  const storedName = path.split("/").pop() || "attachment";
-  return storedName.includes("__") ? storedName.split("__").slice(1).join("__") : storedName;
-};
-
-function insertTag(textareaRef, openTag, closeTag, setContent) {
-  const el = textareaRef.current;
-  if (!el) return;
-  const start = el.selectionStart;
-  const end = el.selectionEnd;
-  const text = el.value;
-  const selected = text.substring(start, end);
-  const replacement = `${openTag}${selected}${closeTag}`;
-  const newText = text.substring(0, start) + replacement + text.substring(end);
-  setContent(newText);
-  setTimeout(() => {
-    el.focus();
-    const cursorPos = selected ? start + replacement.length : start + openTag.length;
-    el.setSelectionRange(cursorPos, cursorPos);
-  }, 0);
-}
-
-function plainTextToHtml(text) {
-  if (!text) return text;
-  if (/<[a-z][\s\S]*>/i.test(text)) return text;
-  let html = text
-    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-    .replace(/\*(.+?)\*/g, "<i>$1</i>")
-    .replace(/__(.+?)__/g, "<u>$1</u>")
-    .replace(/~~(.+?)~~/g, "<s>$1</s>")
-    .replace(/`(.+?)`/g, "<code>$1</code>");
-  return html;
-}
-
-function ToolbarButton({ icon: Icon, title, onClick, size = 14 }) {
-  return (
-    <button type="button" title={title} onClick={onClick} style={{
-      background: "none", border: "1px solid transparent", borderRadius: "4px",
-      padding: "4px 6px", cursor: "pointer", color: "var(--text-secondary)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      transition: "all 0.15s",
-    }}
-    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-tertiary)"; e.currentTarget.style.borderColor = "var(--border-color)"; }}
-    onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = "transparent"; }}
-    >
-      <Icon size={size} />
-    </button>
-  );
-}
-
-function FileUploadArea({ accept, label, file, onFileSelect, onClear, preview }) {
-  const inputRef = useRef(null);
-  const [dragOver, setDragOver] = useState(false);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) onFileSelect(dropped);
-  }, [onFileSelect]);
-
-  return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-      onClick={() => !file && inputRef.current?.click()}
-      style={{
-        border: `2px dashed ${dragOver ? "#2563EB" : file ? "var(--success)" : "var(--border-color)"}`,
-        borderRadius: "12px",
-        padding: file ? "12px" : "24px",
-        textAlign: "center",
-        cursor: file ? "default" : "pointer",
-        background: dragOver ? "rgba(37,99,235,0.04)" : file ? "rgba(34,197,94,0.04)" : "var(--bg-tertiary)",
-        transition: "all 0.2s",
-      }}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        onChange={(e) => e.target.files[0] && onFileSelect(e.target.files[0])}
-        style={{ display: "none" }}
-      />
-      {file ? (
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {preview ? (
-            <img src={preview} alt="" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" }} />
-          ) : (
-            <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "rgba(14,165,233,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0EA5E9" }}>
-              <FileText size={20} />
-            </div>
-          )}
-          <div style={{ flex: 1, textAlign: "left" }}>
-            <p style={{ fontWeight: 600, fontSize: "13px", marginBottom: "2px" }}>{file.name}</p>
-            <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>{(file.size / 1024).toFixed(1)} KB</p>
-          </div>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onClear(); }}
-            style={{ background: "rgba(239,68,68,0.08)", border: "none", borderRadius: "6px", padding: "6px", cursor: "pointer", color: "var(--danger)" }}>
-            <X size={14} />
-          </button>
-        </div>
-      ) : (
-        <>
-          <Upload size={24} style={{ color: "var(--text-muted)", marginBottom: "8px" }} />
-          <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "4px" }}>{label}</p>
-          <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>Drag & drop or click to browse</p>
-        </>
-      )}
-    </div>
-  );
-}
-
-const toLocalInputValue = (date) => {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
-
-const defaultScheduleTime = () => toLocalInputValue(new Date(Date.now() + 10 * 60 * 1000));
 
 export default function TgSchedule({ onOpenBots }) {
   const [posts, setPosts] = useState([]);
@@ -215,21 +92,22 @@ export default function TgSchedule({ onOpenBots }) {
 
   const handleFileSelect = (file) => {
     if (!file) return;
+    // Guard against extremely large files (>500 MB) before touching the browser
+    const MAX_MB = 500;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(0)} MB). Maximum allowed is ${MAX_MB} MB.`);
+      return;
+    }
     const newId = Date.now() + Math.random();
+    // Use createObjectURL — instant and non-blocking (no base64 encoding)
+    const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
     const newAttachment = {
       id: newId,
       file: file,
       name: file.name,
-      preview: null,
+      preview,
       media_type: file.type.startsWith("image/") ? "photo" : "document",
     };
-    if (file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setMediaFiles(prev => prev.map(item => item.id === newId ? { ...item, preview: e.target.result } : item));
-      };
-      reader.readAsDataURL(file);
-    }
     setMediaFiles(prev => [...prev, newAttachment]);
   };
 
@@ -443,17 +321,15 @@ export default function TgSchedule({ onOpenBots }) {
   const setBatchFile = (i, file) => {
     const copy = [...batchMessages];
     if (file) {
-      if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          copy[i] = { ...copy[i], file, filePreview: e.target.result };
-          setBatchMessages([...copy]);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        copy[i] = { ...copy[i], file, filePreview: null };
-        setBatchMessages(copy);
+      const MAX_MB = 500;
+      if (file.size > MAX_MB * 1024 * 1024) {
+        setError(`File is too large (${(file.size / 1024 / 1024).toFixed(0)} MB). Maximum allowed is ${MAX_MB} MB.`);
+        return;
       }
+      // Use createObjectURL — instant and non-blocking
+      const filePreview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+      copy[i] = { ...copy[i], file, filePreview };
+      setBatchMessages(copy);
     } else {
       copy[i] = { ...copy[i], file: null, filePreview: null, media_path: null, actual_media_type: null };
       setBatchMessages(copy);
@@ -462,7 +338,6 @@ export default function TgSchedule({ onOpenBots }) {
 
   const doInsert = (open, close) => insertTag(contentRef, open, close, (val) => setForm({ ...form, content: val }));
 
-  const labelStyle = { fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px", display: "block" };
 
   const previewHtml = plainTextToHtml(form.content);
 
@@ -546,6 +421,8 @@ export default function TgSchedule({ onOpenBots }) {
                   style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontSize: "13px", color: "var(--text-primary)" }} />
               </div>
             </div>
+
+            <SophieAssistant onApply={(text) => setForm((prev) => ({ ...prev, content: text }))} />
 
             {/* ── Rich text editor ── */}
             <div style={{ marginBottom: "16px" }}>

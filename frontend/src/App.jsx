@@ -4,6 +4,7 @@ import LandingPage from "./components/LandingPage";
 import LegalPrivacy from "./components/LegalPrivacy";
 import TermsConditions from "./components/TermsConditions";
 import LegalDisclaimer from "./components/LegalDisclaimer";
+import ErrorBoundary from "./components/ErrorBoundary";
 import {
   LayoutDashboard, UserCheck, Mail,
   Settings as SettingsIcon, MessageSquare, Menu, X,
@@ -270,8 +271,12 @@ export default function App() {
                 const currentUrl = getApiUrl();
                 const newUrl = prompt("Configure Backend API Server URL (e.g. ngrok URL or localhost):", currentUrl);
                 if (newUrl !== null) {
-                  setApiUrl(newUrl.trim());
-                  window.location.reload();
+                  try {
+                    setApiUrl(newUrl.trim());
+                    window.location.reload();
+                  } catch (err) {
+                    alert(err.message);
+                  }
                 }
               }}
               title="Click to configure backend API URL"
@@ -342,14 +347,16 @@ export default function App() {
 
         {/* Active view */}
         <div className="page-content">
-          <Suspense fallback={
-            <div className="page-loader" role="status" aria-live="polite">
-              <LoaderCircle className="animate-spin" size={22} />
-              <span>Loading workspace…</span>
-            </div>
-          }>
-            {renderActiveComponent()}
-          </Suspense>
+          <ErrorBoundary resetKey={activeTab}>
+            <Suspense fallback={
+              <div className="page-loader" role="status" aria-live="polite">
+                <LoaderCircle className="animate-spin" size={22} />
+                <span>Loading workspace…</span>
+              </div>
+            }>
+              {renderActiveComponent()}
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
     </div>

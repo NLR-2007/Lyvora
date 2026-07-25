@@ -1,17 +1,64 @@
+const DEFAULT_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+
+// The backend URL is overridable because the free ngrok tunnel rotates. It has
+// to be restricted to hosts we actually deploy behind: every request carries
+// the user's bearer token, so an arbitrary origin accepted here would receive
+// that token and take over the account. Plain http is allowed only on loopback.
+const API_HOST_ALLOWLIST = [
+  /^localhost$/,
+  /^127\.0\.0\.1$/,
+  /(^|\.)ngrok-free\.(dev|app)$/,
+  /(^|\.)ngrok\.(io|app)$/,
+];
+
+const isLoopback = (hostname) => hostname === "localhost" || hostname === "127.0.0.1";
+
+export const isAllowedApiUrl = (value) => {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback(url.hostname))) {
+    return false;
+  }
+  try {
+    if (url.host === new URL(DEFAULT_BASE_URL).host) return true;
+  } catch {
+    // DEFAULT_BASE_URL is malformed; fall through to the allowlist.
+  }
+  return API_HOST_ALLOWLIST.some((pattern) => pattern.test(url.hostname));
+};
+
 // Check for ?api=... query parameter to dynamically set backend URL
 if (typeof window !== "undefined") {
   const urlParams = new URLSearchParams(window.location.search);
-  const apiParam = urlParams.get('api');
+  const apiParam = urlParams.get("api");
   if (apiParam) {
-    localStorage.setItem('gg_api_url', apiParam);
-    // Clean the URL by removing the query parameter from browser history
-    const cleanUrl = window.location.pathname + window.location.search.replace(/[?&]api=[^&]+/, '').replace(/^&/, '?');
+    if (isAllowedApiUrl(apiParam)) {
+      localStorage.setItem("gg_api_url", apiParam);
+    } else {
+      console.warn(`Ignored ?api= override for untrusted origin: ${apiParam}`);
+    }
+    // Clean the query parameter out of history either way.
+    const cleanUrl = window.location.pathname + window.location.search.replace(/[?&]api=[^&]+/, "").replace(/^&/, "?");
     window.history.replaceState({}, document.title, cleanUrl);
   }
 }
 
-const DEFAULT_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
-const savedApiUrl = typeof window !== "undefined" ? localStorage.getItem("gg_api_url") : null;
+// A value saved before this check existed, or written by another tab, is not
+// trusted either — validate on read, not only on write.
+const readSavedApiUrl = () => {
+  if (typeof window === "undefined") return null;
+  const saved = localStorage.getItem("gg_api_url");
+  if (!saved) return null;
+  if (isAllowedApiUrl(saved)) return saved;
+  localStorage.removeItem("gg_api_url");
+  return null;
+};
+
+const savedApiUrl = readSavedApiUrl();
 
 export let BASE_URL = (savedApiUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
 
@@ -19,6 +66,9 @@ export const getApiUrl = () => BASE_URL;
 
 export const setApiUrl = (url) => {
   if (url) {
+    if (!isAllowedApiUrl(url)) {
+      throw new Error("That backend URL is not an allowed origin.");
+    }
     localStorage.setItem("gg_api_url", url);
     BASE_URL = url.replace(/\/$/, "");
   } else {

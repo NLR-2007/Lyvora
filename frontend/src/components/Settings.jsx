@@ -196,6 +196,13 @@ export default function Settings() {
     }
   };
 
+  // The Official Meta path only unlocks once an administrator has configured
+  // META_APP_SECRET and the webhook verify token on the backend. Until then it
+  // is a dead end, so it stays hidden rather than showing customers a blocked
+  // flow. A workspace that is already connected keeps seeing it either way, so
+  // an unset platform variable can never strand an existing connection.
+  const showMetaFlow = metaPlatformConfigured || Boolean(metaConnection?.connected);
+
   return (
     <div className="content-grid cols-2-wide">
       {/* Column 1: Settings Form */}
@@ -245,33 +252,38 @@ export default function Settings() {
                 </span>
               </label>
 
-              <label className={`engine-option ${apiMode === "official" ? "selected" : ""} ${!metaPlatformConfigured || !metaConnection?.connected ? "disabled" : ""}`}>
-                <input
-                  type="radio"
-                  name="apiMode"
-                  value="official"
-                  checked={apiMode === "official"}
-                  onChange={() => setApiMode("official")}
-                  disabled={!metaPlatformConfigured || !metaConnection?.connected}
-                />
-                <span className="engine-option-icon meta"><Shield size={18} /></span>
-                <span className="engine-option-copy">
-                  <span className="engine-option-title">Official Meta API <small>Production</small></span>
-                  <span>Meta Graph API and webhooks for approved Professional accounts.</span>
-                </span>
-              </label>
+              {showMetaFlow && (
+                <label className={`engine-option ${apiMode === "official" ? "selected" : ""} ${!metaConnection?.connected ? "disabled" : ""}`}>
+                  <input
+                    type="radio"
+                    name="apiMode"
+                    value="official"
+                    checked={apiMode === "official"}
+                    onChange={() => setApiMode("official")}
+                    disabled={!metaConnection?.connected}
+                  />
+                  <span className="engine-option-icon meta"><Shield size={18} /></span>
+                  <span className="engine-option-copy">
+                    <span className="engine-option-title">Official Meta API <small>Production</small></span>
+                    <span>Meta Graph API and webhooks for approved Professional accounts.</span>
+                  </span>
+                </label>
+              )}
             </div>
 
-            <div className={`platform-readiness ${metaPlatformConfigured ? "ready" : "pending"}`}>
-              <span className="platform-readiness-icon"><Building2 size={17} /></span>
-              <span>
-                <strong>Lyvora Meta platform</strong>
-                <small>{metaPlatformConfigured ? "Configured once by Lyvora and ready for customer connections." : "Administrator setup is pending. Customers never enter the Lyvora App Secret."}</small>
-              </span>
-              <b>{metaPlatformConfigured ? "Ready" : "Admin setup"}</b>
-            </div>
+            {showMetaFlow && (
+              <div className={`platform-readiness ${metaPlatformConfigured ? "ready" : "pending"}`}>
+                <span className="platform-readiness-icon"><Building2 size={17} /></span>
+                <span>
+                  <strong>Lyvora Meta platform</strong>
+                  <small>{metaPlatformConfigured ? "Configured once by Lyvora and ready for customer connections." : "Administrator setup is pending. Customers never enter the Lyvora App Secret."}</small>
+                </span>
+                <b>{metaPlatformConfigured ? "Ready" : "Admin setup"}</b>
+              </div>
+            )}
           </section>
 
+          {showMetaFlow && (
           <div className="meta-connection-card">
             <div className="meta-connection-heading">
               <span className="meta-heading-icon"><Key size={19} /></span>
@@ -382,6 +394,7 @@ export default function Settings() {
               </span>
             </details>
           </div>
+          )}
 
           {/* Base limits & delays */}
           <div className="settings-2col-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
