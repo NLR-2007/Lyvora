@@ -1643,13 +1643,21 @@ def start_bot_background():
     BOT_THREAD.start()
     return True
 
-def stop_bot_background():
-    """Signals the bot loop to stop running."""
+def stop_bot_background(persist: bool = True):
+    """Signal the bot loop to stop.
+
+    `persist` records the stop as the administrator's decision. A process
+    shutting down must pass persist=False: the stored status is the operator's
+    intent, and a restart or crash is not an instruction to stay off.
+    """
     global BOT_RUNNING, BOT_LOOP
     if not BOT_RUNNING:
         return False
 
     BOT_RUNNING = False
+
+    if not persist:
+        return True
 
     try:
         db = SessionLocal()

@@ -54,13 +54,28 @@ async def lifespan(app: FastAPI):
         log_to_db("INFO", "[TG] Telegram service automatically started on startup.")
     except Exception as e:
         log_to_db("ERROR", f"[TG] Failed to auto-start Telegram service: {e}")
-        
+
+    # Resume the Instagram worker if an administrator had it running. The stored
+    # status is the operator's decision; a restart must not silently revert it
+    # and leave the database claiming "running" while nothing is.
+    try:
+        db = SessionLocal()
+        try:
+            should_run = get_system_setting(db, "status") == "running"
+        finally:
+            db.close()
+        if should_run and start_bot_background():
+            log_to_db("INFO", "Automation was running before restart — worker resumed.")
+    except Exception as e:
+        log_to_db("ERROR", f"Failed to resume automation worker on startup: {e}")
+
     yield
-    # Shutdown routine
-    stop_bot_background()
+    # Shutdown routine. persist=False so stopping the process is not recorded as
+    # the administrator switching automation off.
+    stop_bot_background(persist=False)
     if telegram_service.is_running:
         await telegram_service.stop()
-    log_to_db("INFO", "FastAPI server shutting down. Bot worker stopped.")
+    log_to_db("INFO", "FastAPI server shutting down. Bot worker stopped (start state preserved).")
 
 app = FastAPI(
     title="Lyvora Automation API",
