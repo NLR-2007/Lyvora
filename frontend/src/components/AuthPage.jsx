@@ -159,6 +159,9 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="auth-field">
               <label className="auth-label" htmlFor="auth-username">Username</label>
+              {/* autoCapitalize/autoCorrect are off because a touch keyboard
+                  capitalises the first letter by default, which silently
+                  breaks an email-style username. */}
               <div className="auth-input-wrap">
                 <User size={15} className="auth-input-icon" />
                 <input
@@ -171,6 +174,9 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
                   onChange={handleChange}
                   required
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </div>
             </div>

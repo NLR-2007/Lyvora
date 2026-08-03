@@ -11,6 +11,7 @@ import httpx
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.config import cors_origins, cors_origin_regex, validate_runtime_config, settings
@@ -326,7 +327,16 @@ def register_user(payload: UserRegisterSchema, db: Session = Depends(get_db)):
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login_user(payload: UserLoginSchema, db: Session = Depends(get_db)):
     check_login_rate_limit(db, payload.username)
-    user = db.query(User).filter(User.username == payload.username).first()
+    # Accept either identifier. Accounts are commonly provisioned with an email
+    # as the username, and a browser or password manager will happily fill the
+    # email into this field — matching on username alone rejects a credential
+    # the operator considers correct.
+    identifier = payload.username.strip()
+    user = (
+        db.query(User)
+        .filter(or_(User.username == identifier, User.email == identifier))
+        .first()
+    )
     if not user or not verify_password(payload.password, user.password_hash):
         record_failed_login(db, payload.username)
         raise HTTPException(status_code=400, detail="Incorrect username or password.")
