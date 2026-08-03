@@ -102,6 +102,14 @@ export default function Dashboard() {
                 ? `Account: @${status.active_account}`
                 : "No account connected. Go to the Accounts section to connect one."}
           </p>
+          {/* Outside the window the worker deliberately does nothing. Saying so
+              here stops a paused schedule looking like a broken bot. */}
+          {status.system_running && status.user_automation_active && status.within_working_hours === false && (
+            <p className="working-hours-pause">
+              Paused — outside your working hours ({status.working_hours_start}–{status.working_hours_end} IST).
+              Sending resumes automatically, or change the window in Settings.
+            </p>
+          )}
         </div>
         <div className="control-actions">
           {!status.system_running ? (

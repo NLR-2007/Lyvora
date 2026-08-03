@@ -627,10 +627,21 @@ def get_system_status(current_user: User = Depends(get_current_user), workspace:
     system_running = bot_module.BOT_RUNNING
     user_active = getattr(current_user, "automation_active", False)
 
+    # A workspace outside its working-hours window is idle by design. Without
+    # reporting it, the dashboard shows "running" while nothing happens and a
+    # paused schedule is indistinguishable from a broken worker.
+    ws_settings = get_workspace_settings(db, workspace.id)
+    work_start = ws_settings["working_hours_start"]
+    work_end = ws_settings["working_hours_end"]
+    within_hours = bot_module.is_within_working_hours(work_start, work_end)
+
     return {
         "bot_running": system_running and user_active,
         "system_running": system_running,
         "user_automation_active": user_active,
+        "within_working_hours": within_hours,
+        "working_hours_start": work_start,
+        "working_hours_end": work_end,
         "active_account": active_user,
         "sent_today": sent_today,
         "pending_count": pending_count,

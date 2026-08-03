@@ -17,6 +17,10 @@ from backend.security import decrypt_secret
 BOT_RUNNING = False
 BOT_THREAD = None
 BOT_LOOP = None
+
+# Account ids currently paused because their workspace is outside working hours.
+# Used only to log the transition once rather than on every loop tick.
+PAUSED_OUTSIDE_HOURS: set[int] = set()
 IST = ZoneInfo("Asia/Kolkata")
 
 
@@ -1306,11 +1310,24 @@ async def bot_worker_loop():
                 min_delay = max(10, int(ws_settings["min_delay"]))
                 max_delay = max(min_delay, int(ws_settings["max_delay"]))
 
-                if not is_within_working_hours(
-                    ws_settings["working_hours_start"],
-                    ws_settings["working_hours_end"],
-                ):
+                work_start = ws_settings["working_hours_start"]
+                work_end = ws_settings["working_hours_end"]
+                if not is_within_working_hours(work_start, work_end):
+                    # Say so once per pause, not every 30s tick. Without this the
+                    # dashboard reads "running" while nothing happens and there is
+                    # no way to tell a paused schedule from a broken worker.
+                    if active_account.id not in PAUSED_OUTSIDE_HOURS:
+                        PAUSED_OUTSIDE_HOURS.add(active_account.id)
+                        log_to_db(
+                            "INFO",
+                            f"@{active_account.username}: outside working hours "
+                            f"({work_start}-{work_end} IST, now {datetime.now(IST):%H:%M}). "
+                            f"Paused until the window reopens."
+                        )
                     continue
+                if active_account.id in PAUSED_OUTSIDE_HOURS:
+                    PAUSED_OUTSIDE_HOURS.discard(active_account.id)
+                    log_to_db("INFO", f"@{active_account.username}: inside working hours again, resuming.")
 
                 # Official mode is tenant-specific. Never let one customer's
                 # Meta connection pause Playwright for every other workspace.
