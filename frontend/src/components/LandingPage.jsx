@@ -99,10 +99,16 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
 
       </section>
 
-      <footer className="relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-6 py-4 text-xs text-muted-foreground font-body">
-        <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("privacy")}>Privacy</button>
-        <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("terms")}>Terms</button>
-        <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("disclaimer")}>Disclaimer</button>
+      <footer className="relative z-10 flex flex-col items-center gap-2.5 px-6 py-4 font-body">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+          <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("privacy")}>Privacy</button>
+          <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("terms")}>Terms</button>
+          <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("disclaimer")}>Disclaimer</button>
+        </div>
+        <p className="text-[10px] tracking-[0.12em] uppercase text-muted-foreground/70">
+          Developed by{" "}
+          <span className="font-semibold text-muted-foreground">NLR GROUP OF COMPANIES</span>
+        </p>
       </footer>
     </div>
   );
