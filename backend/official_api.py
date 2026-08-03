@@ -4,6 +4,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.database import get_db, MetaConnection, Account, MonitoredPost, ProcessedComment, OptOut, log_to_db, MessageTemplate, get_workspace_settings
+from backend.bot import comment_matches_trigger, MATCH_MODE_EXACT, MATCH_MODE_ANY
 from backend.bot import parse_spintax
 from backend.security import decrypt_secret, verify_meta_signature
 from typing import Dict, Any
@@ -129,20 +130,20 @@ async def process_incoming_comment(value: Dict[str, Any], connection: MetaConnec
         MonitoredPost.is_active == True,
         MonitoredPost.account_id.in_(account_ids),
     ).all()
-    keyword_matches = [
+    # A post set to "any" replies to every comment; "exact" still requires the
+    # comment to be the keyword. Prefer a post whose URL carries this media id
+    # so a keyword shared across posts cannot fire on the wrong one.
+    candidates = [
         post for post in monitored_posts
-        if post.trigger_keyword.strip().casefold() == comment_text.casefold()
+        if comment_matches_trigger(comment_text, post.trigger_keyword,
+                                   getattr(post, "match_mode", MATCH_MODE_EXACT))
     ]
     matched_post = next(
-        (post for post in keyword_matches if post_ig_id and post_ig_id in post.post_url),
-        keyword_matches[0] if keyword_matches else None,
+        (post for post in candidates if post_ig_id and post_ig_id in post.post_url),
+        candidates[0] if candidates else None,
     )
 
     if not matched_post:
-        return
-
-    # Enforce trigger keyword matching
-    if matched_post.trigger_keyword.strip().lower() != comment_text.lower():
         return
 
     # 4. Check processed comments history (deduplication)

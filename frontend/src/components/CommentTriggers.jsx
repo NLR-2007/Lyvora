@@ -10,6 +10,7 @@ export default function CommentTriggers() {
 
   const [postUrl, setPostUrl] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [matchMode, setMatchMode] = useState("exact");
   const [templateId, setTemplateId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,7 +42,9 @@ export default function CommentTriggers() {
 
   const handleAddMonitor = async (e) => {
     e.preventDefault();
-    if (!postUrl.trim() || !keyword.trim() || !templateId || !accountId) {
+    // A keyword is meaningless in "any" mode — nothing reads it.
+    const needsKeyword = matchMode === "exact";
+    if (!postUrl.trim() || (needsKeyword && !keyword.trim()) || !templateId || !accountId) {
       alert("Please fill in all trigger details and select an account.");
       return;
     }
@@ -51,7 +54,8 @@ export default function CommentTriggers() {
         method: "POST",
         body: JSON.stringify({
           post_url: postUrl.trim(),
-          trigger_keyword: keyword.trim(),
+          trigger_keyword: needsKeyword ? keyword.trim() : "",
+          match_mode: matchMode,
           template_id: parseInt(templateId),
           account_id: parseInt(accountId),
           is_active: true
@@ -59,6 +63,7 @@ export default function CommentTriggers() {
       });
       setPostUrl("");
       setKeyword("");
+      setMatchMode("exact");
       setTemplateId("");
       fetchData();
     } catch (e) {
@@ -118,17 +123,59 @@ export default function CommentTriggers() {
               />
             </div>
             
+            <div className="form-group">
+              <label className="form-label">When should we send the DM?</label>
+              <div className="match-mode-options" role="radiogroup" aria-label="Comment match mode">
+                <label className={`match-mode-option ${matchMode === "exact" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="matchMode"
+                    value="exact"
+                    checked={matchMode === "exact"}
+                    onChange={() => setMatchMode("exact")}
+                    disabled={loading}
+                  />
+                  <span>
+                    <strong>Only the trigger word</strong>
+                    <small>The comment must be exactly your keyword. Counts as opt-in.</small>
+                  </span>
+                </label>
+                <label className={`match-mode-option ${matchMode === "any" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="matchMode"
+                    value="any"
+                    checked={matchMode === "any"}
+                    onChange={() => setMatchMode("any")}
+                    disabled={loading}
+                  />
+                  <span>
+                    <strong>Any comment</strong>
+                    <small>Any text, paragraph or emoji triggers the DM.</small>
+                  </span>
+                </label>
+              </div>
+              {matchMode === "any" && (
+                <p className="match-mode-note">
+                  These people did not opt in with a keyword. Your blocklist, daily limit,
+                  working hours and one-DM-per-person rules still apply.
+                </p>
+              )}
+            </div>
+
             <div className="form-row-2col">
               <div className="form-group">
-                <label className="form-label">Trigger Word / Letter</label>
+                <label className="form-label">
+                  Trigger Word / Letter {matchMode === "any" && <span style={{ opacity: 0.6, fontWeight: 400 }}>— not used</span>}
+                </label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. INFO or C"
-                  value={keyword}
+                  placeholder={matchMode === "any" ? "Not needed for any-comment mode" : "e.g. INFO or C"}
+                  value={matchMode === "any" ? "" : keyword}
                   onChange={(e) => setKeyword(e.target.value)}
-                  disabled={loading}
-                  required
+                  disabled={loading || matchMode === "any"}
+                  required={matchMode === "exact"}
                 />
               </div>
 
@@ -191,12 +238,13 @@ export default function CommentTriggers() {
             </h4>
             <div style={{ color: "var(--text-secondary)", fontSize: "13px", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: "12px" }}>
               <p>
-                When a user leaves a comment on your post containing your <strong>Trigger Word/Letter</strong>, the backend <span className="playwright-highlight">Playwright</span> script automatically detects it, opens their profile page, and sends them your connected DM template.
+                When a comment matches this post’s rule, the backend <span className="playwright-highlight">Playwright</span> script detects it, opens the commenter’s profile, and sends your connected DM template.
               </p>
               <ul style={{ paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                <li><strong>Case-insensitive:</strong> Matches lowercase and uppercase comments, such as “java”, “JAVA”, or “Java”.</li>
-                <li><strong>Duplicate protection:</strong> Sends only one trigger message per user for each post.</li>
-                <li><strong>Safer delivery:</strong> Uses the configured delay between comment-triggered DMs.</li>
+                <li><strong>Only the trigger word:</strong> the whole comment must be your keyword. Case-insensitive, so “java”, “JAVA” and “Java” all match — but “send me java” does not. Using the keyword is the commenter opting in.</li>
+                <li><strong>Any comment:</strong> every comment triggers the DM, whatever it contains — a word, a paragraph, or just an emoji. These people never opted in, so use it only where that is appropriate.</li>
+                <li><strong>Duplicate protection:</strong> one message per person per post, in either mode.</li>
+                <li><strong>Still applies either way:</strong> your opt-out blocklist, daily send limit, working hours, and the configured delay between DMs.</li>
               </ul>
             </div>
           </div>
@@ -236,9 +284,13 @@ export default function CommentTriggers() {
                       </a>
                     </td>
                     <td>
-                      <span style={{ fontFamily: "monospace", fontSize: "14px", background: "var(--bg-tertiary)", padding: "4px 8px", borderRadius: "4px" }}>
-                        {item.trigger_keyword}
-                      </span>
+                      {item.match_mode === "any" ? (
+                        <span className="match-mode-badge any">Any comment</span>
+                      ) : (
+                        <span style={{ fontFamily: "monospace", fontSize: "14px", background: "var(--bg-tertiary)", padding: "4px 8px", borderRadius: "4px" }}>
+                          {item.trigger_keyword}
+                        </span>
+                      )}
                     </td>
                     <td>{getTemplateName(item.template_id)}</td>
                     <td>

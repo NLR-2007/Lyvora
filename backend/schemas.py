@@ -1,7 +1,7 @@
 import re
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
 
 # An uploaded attachment is referenced by its stored file name only. Anything
 # with a separator, a drive letter, or ".." is refused here so a scheduled post
@@ -77,20 +77,41 @@ class AccountResponse(BaseModel):
 # --- Monitored Posts CRUD updates ---
 class MonitoredPostCreate(BaseModel):
     post_url: str = Field(..., min_length=10)
-    trigger_keyword: str = Field(..., min_length=1)
+    # Not required when match_mode is "any" — there is no keyword to match.
+    trigger_keyword: str = ""
+    match_mode: str = "exact"
     template_id: int
     account_id: int
     is_active: bool = True
+
+    @field_validator("match_mode")
+    @classmethod
+    def _check_mode(cls, value: str) -> str:
+        value = (value or "exact").strip().lower()
+        if value not in {"exact", "any"}:
+            raise ValueError("match_mode must be 'exact' or 'any'")
+        return value
+
+    @model_validator(mode="after")
+    def _keyword_required_for_exact(self):
+        self.trigger_keyword = (self.trigger_keyword or "").strip()
+        if self.match_mode == "exact" and not self.trigger_keyword:
+            raise ValueError("A trigger keyword is required when match_mode is 'exact'")
+        if self.match_mode == "any":
+            # Any stored keyword would be misleading — nothing reads it.
+            self.trigger_keyword = ""
+        return self
 
 class MonitoredPostResponse(BaseModel):
     id: int
     post_url: str
     trigger_keyword: str
+    match_mode: str = "exact"
     template_id: int
     account_id: int
     is_active: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 

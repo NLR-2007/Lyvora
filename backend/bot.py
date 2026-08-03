@@ -53,11 +53,35 @@ def parse_spintax(text: str) -> str:
         text = text.replace(match.group(0), random.choice(options), 1)
     return text
 
+MATCH_MODE_EXACT = "exact"
+MATCH_MODE_ANY = "any"
+COMMENT_MATCH_MODES = (MATCH_MODE_EXACT, MATCH_MODE_ANY)
+
+
 def is_exact_trigger_match(comment_text: str, trigger_keyword: str) -> bool:
     """Require the complete comment to match the configured trigger."""
     normalize = lambda value: " ".join((value or "").strip().casefold().split())
     keyword = normalize(trigger_keyword)
     return bool(keyword) and normalize(comment_text) == keyword
+
+
+def comment_matches_trigger(comment_text: str, trigger_keyword: str,
+                            match_mode: str = MATCH_MODE_EXACT) -> bool:
+    """Decide whether a single comment should trigger outreach.
+
+    `exact` is the consent-preserving default: the whole comment must be the
+    configured keyword, so the commenter has demonstrably opted in.
+
+    `any` replies to every comment whatever it contains — a word, a paragraph
+    or a bare emoji. That is deliberately not an opt-in signal, so it is only
+    ever enabled per post and never by default. Every other guard still
+    applies: opt-out blocklist, daily limit, working hours, and one DM per
+    person per post.
+    """
+    text = (comment_text or "").strip()
+    if match_mode == MATCH_MODE_ANY:
+        return bool(text)
+    return is_exact_trigger_match(comment_text, trigger_keyword)
 
 def is_valid_instagram_username(username: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._]{1,30}", (username or "").strip()))
@@ -1009,8 +1033,9 @@ class InstagramBot:
             log_to_db("ERROR", f"Error scraping comments on {post_url}: {str(e)}")
             return []
 
-    async def scrape_post_comments(self, post_url: str, trigger_keyword: str, own_username: str = "") -> list:
-        """Load correctly mapped comment authors/text and match an exact trigger.
+    async def scrape_post_comments(self, post_url: str, trigger_keyword: str, own_username: str = "",
+                                   match_mode: str = MATCH_MODE_EXACT) -> list:
+        """Load correctly mapped comment authors/text and apply the match mode.
 
         Instagram's media API is preferred because each comment object contains
         its own author. The DOM fallback is deliberately strict and returns no
@@ -1154,10 +1179,11 @@ class InstagramBot:
                 seen.add(key)
                 if own_username and username.casefold() == own_username.casefold():
                     continue
-                if is_valid_instagram_username(username) and is_exact_trigger_match(comment_text, trigger_keyword):
+                if is_valid_instagram_username(username) and comment_matches_trigger(comment_text, trigger_keyword, match_mode):
                     matched.append((username, comment_text, comment_permalink))
 
-            log_to_db("INFO", f"Found {len(matched)} exact comments matching trigger '{trigger_keyword}'.")
+            criteria = "any comment" if match_mode == MATCH_MODE_ANY else f"exact trigger '{trigger_keyword}'"
+            log_to_db("INFO", f"Found {len(matched)} comments matching {criteria}.")
             return matched
         except Exception as error:
             log_to_db("ERROR", f"Safe comment scrape failed for {post_url}: {type(error).__name__}: {error!r}")
@@ -1362,13 +1388,19 @@ async def bot_worker_loop():
                             continue
                             
                         for post in active_posts:
-                            comments = await bot.scrape_post_comments(post.post_url, post.trigger_keyword, own_username=active_account.username)
+                            comments = await bot.scrape_post_comments(
+                                post.post_url, post.trigger_keyword,
+                                own_username=active_account.username,
+                                match_mode=getattr(post, "match_mode", MATCH_MODE_EXACT),
+                            )
                             log_to_db("INFO", f"Scraped trigger comments for @{active_account.username} on post {post.id}: {comments}")
                             
                             for username, comment_text, comment_permalink in comments:
                                 if not BOT_RUNNING:
                                     break
-                                if not is_valid_instagram_username(username) or not is_exact_trigger_match(comment_text, post.trigger_keyword):
+                                if not is_valid_instagram_username(username) or not comment_matches_trigger(
+                                    comment_text, post.trigger_keyword, getattr(post, "match_mode", MATCH_MODE_EXACT)
+                                ):
                                     log_to_db("ERROR", f"[SAFETY] Refused invalid or mismatched comment recipient @{username}.")
                                     continue
                                 

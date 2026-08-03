@@ -1163,13 +1163,20 @@ def add_monitored_post(payload: MonitoredPostCreate, current_user: User = Depend
     db_post = MonitoredPost(
         post_url=payload.post_url,
         trigger_keyword=payload.trigger_keyword,
+        match_mode=payload.match_mode,
         template_id=payload.template_id,
         is_active=payload.is_active,
         account_id=payload.account_id
     )
     db.add(db_post)
+    audit(db, "monitored_post.created", current_user, workspace, "monitored_post", None,
+          {"match_mode": payload.match_mode, "post_url": payload.post_url})
     db.commit()
     db.refresh(db_post)
+    if payload.match_mode == "any":
+        log_to_db("WARNING",
+                  f"Monitored post {db_post.id} set to reply to ANY comment. "
+                  f"Outreach to people who did not use a keyword — blocklist and limits still apply.")
     return db_post
 
 @app.delete("/api/posts/{id}")

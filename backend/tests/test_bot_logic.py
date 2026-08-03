@@ -8,6 +8,9 @@ from datetime import datetime
 import pytest
 
 from backend.bot import (
+    MATCH_MODE_ANY,
+    MATCH_MODE_EXACT,
+    comment_matches_trigger,
     is_exact_trigger_match,
     is_valid_instagram_username,
     is_within_working_hours,
@@ -82,3 +85,53 @@ def test_accepts_real_usernames(username):
 @pytest.mark.parametrize("username", ["", "a" * 31, "has space", "bad!char", "@leading"])
 def test_rejects_malformed_usernames(username):
     assert is_valid_instagram_username(username) is False
+
+
+# ── Match modes ──────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("comment", [
+    "send",              # the keyword itself
+    "anything at all",
+    "a long paragraph explaining exactly why this person is interested in the offer",
+    "🔥",                # bare emoji
+    "😍😍😍",
+    "❤️ love this",
+    "नमस्ते",             # non-latin script
+    "?",
+])
+def test_any_mode_triggers_on_every_comment(comment):
+    """Whatever the comment contains — word, paragraph, emoji — it triggers."""
+    assert comment_matches_trigger(comment, "send", MATCH_MODE_ANY) is True
+
+
+@pytest.mark.parametrize("comment", ["", "   ", "\n\t "])
+def test_any_mode_still_ignores_empty_comments(comment):
+    """An empty comment is not a person asking for anything."""
+    assert comment_matches_trigger(comment, "send", MATCH_MODE_ANY) is False
+
+
+def test_any_mode_does_not_need_a_keyword():
+    assert comment_matches_trigger("hello", "", MATCH_MODE_ANY) is True
+
+
+@pytest.mark.parametrize("comment,expected", [
+    ("send", True),
+    ("SEND", True),
+    ("  send  ", True),
+    ("send me the link", False),
+    ("🔥", False),
+    ("", False),
+])
+def test_exact_mode_is_unchanged(comment, expected):
+    assert comment_matches_trigger(comment, "send", MATCH_MODE_EXACT) is expected
+
+
+def test_default_mode_is_exact():
+    """Consent-preserving behaviour must be what you get without asking."""
+    assert comment_matches_trigger("anything", "send") is False
+    assert comment_matches_trigger("send", "send") is True
+
+
+def test_unknown_mode_falls_back_to_exact():
+    """A bad value must never silently widen who gets messaged."""
+    assert comment_matches_trigger("anything", "send", "nonsense") is False

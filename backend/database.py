@@ -249,6 +249,9 @@ class MonitoredPost(Base):
     id = Column(Integer, primary_key=True, index=True)
     post_url = Column(String(500), nullable=False)
     trigger_keyword = Column(String(100), nullable=False)
+    # "exact"  -> the whole comment must equal trigger_keyword (opt-in consent)
+    # "any"    -> every comment triggers, whatever it contains
+    match_mode = Column(String(20), default="exact", nullable=False, server_default="exact")
     template_id = Column(Integer, ForeignKey("message_templates.id", ondelete="CASCADE"), nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
