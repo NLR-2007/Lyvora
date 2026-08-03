@@ -522,7 +522,9 @@ tr:hover td {
   border: 1px solid #334155;
   border-radius: 10px;
   padding: 20px;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  /* Log output is the one place monospace earns its keep. Uses the system
+     stack rather than a webfont so it costs nothing to load. */
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, Consolas, monospace;
   font-size: 12.5px;
   max-height: 350px;
   overflow-y: auto;

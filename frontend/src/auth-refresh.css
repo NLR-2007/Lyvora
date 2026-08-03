@@ -31,9 +31,10 @@
   --hair:       #E2E8F0;
   --hair-soft:  #EEF1F6;
 
-  --font-ui:    'Manrope', system-ui, sans-serif;
-  --font-serif: 'Instrument Serif', Georgia, serif;
-  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  /* The app's own stack. A page-specific family is exactly the kind of
+     inconsistency the single-theme rule exists to prevent. */
+  --font-ui:    var(--font-body);
+  --font-serif: var(--font-display);
 
   position: relative;
   min-height: 100dvh;
@@ -134,10 +135,9 @@
   display: block;
   margin-top: 5px;
   color: var(--ink-mute);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
+    font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
 }
 
@@ -148,10 +148,9 @@
   gap: 8px;
   margin-bottom: 20px;
   color: var(--signal);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.16em;
+    font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
@@ -216,10 +215,10 @@
   grid-row: span 2;
   padding-top: 2px;
   color: var(--signal);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+    font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .auth-feature-title {
@@ -259,9 +258,9 @@
   align-items: center;
   gap: 7px;
   color: var(--ink-mute);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+    font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
@@ -274,9 +273,9 @@
 
 .auth-hero-footer p:first-child {
   color: var(--ink-mute);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.18em;
+    font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -313,11 +312,9 @@
   border: 0;
   background: none;
   color: var(--ink-mute);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+    font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
   cursor: pointer;
   transition: color 0.2s ease;
 }
@@ -360,11 +357,9 @@
   background: transparent;
   color: var(--ink-mute);
   font: inherit;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+    font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
   cursor: pointer;
   transition: color 0.2s ease;
 }
@@ -426,10 +421,9 @@
 
 .auth-label {
   color: var(--ink-mute);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: 0.16em;
+    font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -663,9 +657,9 @@
     margin-top: 22px;
     color: var(--ink-mute);
     text-align: center;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 0.1em;
+        font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
   }
 
