@@ -45,7 +45,7 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
             onClick={onGetStarted}
             className="rounded-full px-5 text-sm font-medium"
           >
-            Try Free Beta
+            Sign In
           </Button>
         </div>
       </header>
@@ -89,17 +89,12 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="mt-5 flex items-center gap-3"
         >
-          <Button
-            onClick={onGetStarted}
-            className="rounded-full px-6 py-5 text-sm font-medium font-body"
-          >
-            Start for Free
-          </Button>
-
+          {/* Sign In in the navbar is the labelled entry point; this stays as a
+              secondary affordance and carries its own accessible name. */}
           <button
             onClick={onGetStarted}
             className="flex items-center justify-center h-11 w-11 rounded-full border-0 bg-background shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-background/80 transition-colors"
-            aria-label="Get started"
+            aria-label="Sign in to Lyvora"
           >
             <ArrowRight className="h-4 w-4 text-foreground" />
           </button>
