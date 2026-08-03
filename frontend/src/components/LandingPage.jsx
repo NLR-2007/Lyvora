@@ -2,6 +2,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "../lib/constants";
 import heroPoster from "../assets/hero.png";
 
 export default function LandingPage({ onGetStarted, onNavigateLegal }) {
@@ -32,13 +33,21 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
 
 
 
-        {/* CTA Button */}
-        <Button 
-          onClick={onGetStarted}
-          className="rounded-full px-5 text-sm font-medium"
-        >
-          Try Free Beta
-        </Button>
+        {/* CTA Buttons */}
+        <div className="flex items-center gap-2">
+          <a
+            href={SUPPORT_MAILTO}
+            className="rounded-full border border-border bg-background px-5 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            Contact Us
+          </a>
+          <Button
+            onClick={onGetStarted}
+            className="rounded-full px-5 text-sm font-medium"
+          >
+            Try Free Beta
+          </Button>
+        </div>
       </header>
 
       {/* Hero Section */}
@@ -104,6 +113,7 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
           <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("privacy")}>Privacy</button>
           <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("terms")}>Terms</button>
           <button type="button" className="hover:text-foreground transition-colors" onClick={() => onNavigateLegal("disclaimer")}>Disclaimer</button>
+          <a href={SUPPORT_MAILTO} className="hover:text-foreground transition-colors">{SUPPORT_EMAIL}</a>
         </div>
         <p className="text-[10px] tracking-[0.12em] uppercase text-muted-foreground/70">
           Developed by{" "}

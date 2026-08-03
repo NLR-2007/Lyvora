@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Lock, User, AtSign, ArrowRight, ArrowLeft, Loader, Eye, EyeOff, Send, BarChart3, Shield, MessageSquare, Mail, Sparkles, CheckCircle2 } from "lucide-react";
 import { apiLogin, apiRegister } from "../api";
+import { SUPPORT_EMAIL } from "../lib/constants";
 
 export default function AuthPage({ onAuthSuccess, onBackToHome }) {
   const [mode, setMode] = useState("login");
@@ -34,7 +35,10 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
           return;
         }
         await apiRegister(form.username, form.email, form.password);
-        setSuccess("Account created! Please sign in.");
+        setSuccess(
+          "Account created. An administrator needs to approve it before you can sign in — " +
+          "we'll review it shortly. Questions? Email lyvoranlr@gmail.com"
+        );
         setMode("login");
         setForm({ username: form.username, email: "", password: "" });
       }
@@ -256,6 +260,11 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
             >
               {mode === "login" ? "Register here" : "Sign in"}
             </button>
+          </p>
+
+          <p className="auth-contact-note">
+            Need help or waiting on approval?{" "}
+            <a className="auth-link-btn" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
           </p>
 
           {/* Mobile-only developer credit */}

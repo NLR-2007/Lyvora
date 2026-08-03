@@ -161,6 +161,7 @@ class AdminUserDetailResponse(BaseModel):
     email: str
     is_admin: bool
     is_enabled: bool = True
+    is_approved: bool = False
     created_at: datetime
     accounts: List[AccountResponse] = []
     ig_accounts: int = 0

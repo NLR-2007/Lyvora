@@ -45,6 +45,10 @@ class User(Base):
     email = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     is_admin = Column(Boolean, default=False)
+    # Distinct from is_enabled on purpose. is_approved=False means "signed up,
+    # never reviewed"; is_enabled=False means "reviewed and then blocked".
+    # Collapsing them would tell a new signup their account was disabled.
+    is_approved = Column(Boolean, default=False, nullable=False, server_default="0")
     is_enabled = Column(Boolean, default=True)
     automation_active = Column(Boolean, default=False)
     cost_reset_at = Column(DateTime, nullable=True)
@@ -758,6 +762,7 @@ def init_db():
                 password_hash=hashed,
                 is_admin=True,
                 is_enabled=True,
+                is_approved=True,   # the bootstrap admin has nobody to approve them
             )
             db.add(admin_user)
             db.flush()

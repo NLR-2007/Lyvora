@@ -182,6 +182,12 @@ iframe {
   margin-top: 4px;
 }
 
+/* Signups waiting on an admin decision need to stand out in the directory. */
+.admin-row-pending > td { background: #FFFBEB; }
+.admin-row-pending > td:first-child { box-shadow: inset 3px 0 0 #F59E0B; }
+
+.admin-pending-count { color: #B45309; font-weight: 700; }
+
 .working-hours-pause {
   margin-top: 8px;
   padding: 9px 12px;

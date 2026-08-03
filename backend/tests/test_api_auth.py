@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.database import LoginAttempt, SessionLocal
+from backend.database import LoginAttempt, SessionLocal, User
 
 
 @pytest.fixture(scope="module")
@@ -12,16 +12,37 @@ def client():
     return TestClient(main.app)
 
 
-@pytest.fixture
-def user(client):
-    """A registered account, reused across the auth tests."""
+def _register(client, prefix="probe"):
     import uuid
 
-    username = f"probe_{uuid.uuid4().hex[:8]}"
+    username = f"{prefix}_{uuid.uuid4().hex[:8]}"
     payload = {"username": username, "email": f"{username}@example.com", "password": "correct-horse"}
     response = client.post("/api/auth/register", json=payload)
     assert response.status_code == 200, response.text
     return payload
+
+
+def _approve(username, approved=True):
+    """Set approval directly — these tests are not about the admin endpoint."""
+    db = SessionLocal()
+    row = db.query(User).filter(User.username == username).first()
+    row.is_approved = approved
+    db.commit()
+    db.close()
+
+
+@pytest.fixture
+def user(client):
+    """A registered, approved account, reused across the auth tests."""
+    payload = _register(client)
+    _approve(payload["username"])
+    return payload
+
+
+@pytest.fixture
+def pending_user(client):
+    """A registered account that no administrator has approved yet."""
+    return _register(client, prefix="pending")
 
 
 def _clear_attempts(username):
@@ -118,3 +139,60 @@ def test_admin_endpoints_reject_a_normal_user(client, user):
 def test_a_forged_token_is_rejected(client):
     headers = {"Authorization": "Bearer not.a.real.token"}
     assert client.get("/api/settings", headers=headers).status_code == 401
+
+
+# ── Admin approval gate ──────────────────────────────────────────────────────
+
+def test_a_new_signup_is_not_approved(client, pending_user):
+    db = SessionLocal()
+    row = db.query(User).filter(User.username == pending_user["username"]).first()
+    db.close()
+    assert row.is_approved is False
+
+
+def test_an_unapproved_account_cannot_sign_in(client, pending_user):
+    response = client.post("/api/auth/login", json={
+        "username": pending_user["username"], "password": pending_user["password"],
+    })
+    assert response.status_code == 403
+    detail = response.json()["detail"]
+    assert "approval" in detail.lower()
+    # The message must point somewhere useful, not just refuse.
+    assert "lyvoranlr@gmail.com" in detail
+
+
+def test_approving_lets_them_in(client, pending_user):
+    _approve(pending_user["username"])
+    response = client.post("/api/auth/login", json={
+        "username": pending_user["username"], "password": pending_user["password"],
+    })
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    assert client.get("/api/status", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+
+def test_revoking_approval_kills_an_existing_session(client, pending_user):
+    """A live token must stop working the moment access is revoked."""
+    _approve(pending_user["username"])
+    token = client.post("/api/auth/login", json={
+        "username": pending_user["username"], "password": pending_user["password"],
+    }).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/status", headers=headers).status_code == 200
+
+    _approve(pending_user["username"], approved=False)
+    assert client.get("/api/status", headers=headers).status_code == 403
+
+
+def test_unapproved_users_cannot_reach_any_protected_endpoint(client, pending_user):
+    """Registration returns no token, but a token obtained before revocation
+    must not act as a bypass on any route."""
+    _approve(pending_user["username"])
+    token = client.post("/api/auth/login", json={
+        "username": pending_user["username"], "password": pending_user["password"],
+    }).json()["access_token"]
+    _approve(pending_user["username"], approved=False)
+
+    headers = {"Authorization": f"Bearer {token}"}
+    for path in ["/api/me", "/api/settings", "/api/accounts", "/api/messages", "/api/tg/bots"]:
+        assert client.get(path, headers=headers).status_code == 403, path

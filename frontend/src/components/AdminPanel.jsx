@@ -23,15 +23,19 @@ function StatCard({ icon: Icon, label, value, color = "#0F172A", sub }) {
   );
 }
 
-function UserRow({ user, onToggleAdmin, onToggleEnabled, onDelete, onResetCost }) {
+function UserRow({ user, onToggleAdmin, onToggleEnabled, onToggleApproved, onDelete, onResetCost }) {
   const [expanded, setExpanded] = useState(false);
   const successRate = (user.dms_sent + user.dms_failed) > 0
     ? Math.round((user.dms_sent / (user.dms_sent + user.dms_failed)) * 100)
     : 0;
+  const pendingApproval = !user.is_approved;
 
   return (
     <>
-      <tr style={{ opacity: user.is_enabled ? 1 : 0.5 }}>
+      <tr
+        className={pendingApproval ? "admin-row-pending" : ""}
+        style={{ opacity: user.is_enabled ? 1 : 0.5 }}
+      >
         <td>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div className="admin-avatar">{user.username[0].toUpperCase()}</div>
@@ -49,13 +53,25 @@ function UserRow({ user, onToggleAdmin, onToggleEnabled, onDelete, onResetCost }
           )}
         </td>
         <td>
-          <span
-            className={`badge ${user.is_enabled ? "badge-sent" : "badge-failed"}`}
-            style={{ fontSize: "10px", cursor: "pointer" }}
-            onClick={() => onToggleEnabled(user.id, user.username, user.is_enabled)}
-          >
-            {user.is_enabled ? "Enabled" : "Disabled"}
-          </span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "5px", alignItems: "flex-start" }}>
+            {/* Approval is the gate on signing in at all, so it leads. */}
+            <button
+              type="button"
+              className={`badge ${user.is_approved ? "badge-sent" : "badge-pending"}`}
+              style={{ fontSize: "10px", cursor: "pointer", border: 0 }}
+              onClick={() => onToggleApproved(user.id, user.username, user.is_approved)}
+              title={user.is_approved ? "Revoke platform access" : "Approve this signup"}
+            >
+              {user.is_approved ? "Approved" : "Awaiting approval"}
+            </button>
+            <span
+              className={`badge ${user.is_enabled ? "badge-sent" : "badge-failed"}`}
+              style={{ fontSize: "10px", cursor: "pointer" }}
+              onClick={() => onToggleEnabled(user.id, user.username, user.is_enabled)}
+            >
+              {user.is_enabled ? "Enabled" : "Disabled"}
+            </span>
+          </div>
         </td>
         <td>
           <div style={{ fontSize: "12px", lineHeight: "1.8" }}>
@@ -242,6 +258,19 @@ export default function AdminPanel() {
     if (!window.confirm(`${isEnabled ? "Disable" : "Enable"} automation for @${username}?`)) return;
     try {
       await apiFetch(`/api/admin/users/${userId}/toggle-enabled`, { method: "PATCH" });
+      fetchAll();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const handleToggleApproved = async (userId, username, isApproved) => {
+    const message = isApproved
+      ? `Revoke platform access for @${username}? They will be signed out immediately.`
+      : `Approve @${username}? They will be able to sign in and use the platform.`;
+    if (!window.confirm(message)) return;
+    try {
+      await apiFetch(`/api/admin/users/${userId}/toggle-approved`, { method: "PATCH" });
       fetchAll();
     } catch (e) {
       alert(e.message);
@@ -453,7 +482,17 @@ export default function AdminPanel() {
       {activeSection === "users" && (
         <div className="glass-card admin-users-card">
           <div className="admin-card-header">
-            <div><h2>User Directory</h2><p>{users.length} total · {users.filter(u => u.is_enabled).length} active · {users.filter(u => !u.is_enabled).length} disabled</p></div>
+            <div>
+              <h2>User Directory</h2>
+              <p>
+                {users.length} total · {users.filter(u => u.is_enabled).length} active · {users.filter(u => !u.is_enabled).length} disabled
+                {users.filter(u => !u.is_approved).length > 0 && (
+                  <strong className="admin-pending-count">
+                    {" · "}{users.filter(u => !u.is_approved).length} awaiting approval
+                  </strong>
+                )}
+              </p>
+            </div>
             <div className="admin-search"><Search size={15}/><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Search users…" /></div>
           </div>
           <div className="table-container admin-table-container">
@@ -481,6 +520,7 @@ export default function AdminPanel() {
                     <UserRow key={u.id} user={u}
                       onToggleAdmin={handleToggleAdmin}
                       onToggleEnabled={handleToggleEnabled}
+                      onToggleApproved={handleToggleApproved}
                       onResetCost={handleResetCost}
                       onDelete={handleDeleteUser} />
                   ))

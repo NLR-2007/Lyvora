@@ -54,6 +54,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.username == username).first()
     if user is None or not getattr(user, "is_enabled", True):
         raise credentials_exception
+    if not getattr(user, "is_approved", True):
+        # 403 rather than 401: the token is valid, the account simply is not
+        # cleared yet. A 401 would make the client silently log them out.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is awaiting administrator approval. "
+                   "Contact lyvoranlr@gmail.com if this takes longer than expected.",
+        )
     return user
 
 def get_current_admin(current_user: User = Depends(get_current_user)) -> User:

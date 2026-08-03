@@ -544,6 +544,16 @@
   text-underline-offset: 3px;
 }
 
+.auth-contact-note {
+  margin-top: 10px;
+  color: var(--ink-mute);
+  text-align: center;
+  font-size: 11.5px;
+}
+
+.auth-contact-note a { text-decoration: none; }
+.auth-contact-note a:hover { text-decoration: underline; }
+
 .auth-link-btn:hover { text-decoration: underline; }
 .auth-mobile-credit { display: none; }
 

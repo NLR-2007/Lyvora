@@ -320,7 +320,10 @@ def register_user(payload: UserRegisterSchema, db: Session = Depends(get_db)):
         username=payload.username,
         email=payload.email,
         password_hash=hashed_pwd,
-        is_admin=False
+        is_admin=False,
+        # Every signup waits for an administrator. Set explicitly rather than
+        # relying on a column default so the gate cannot be lost in a migration.
+        is_approved=False,
     )
     db.add(db_user)
     db.flush()
@@ -357,6 +360,13 @@ def login_user(payload: UserLoginSchema, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Incorrect username or password.")
     if not getattr(user, "is_enabled", True):
         raise HTTPException(status_code=403, detail="This account is disabled.")
+    if not getattr(user, "is_approved", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is awaiting administrator approval. "
+                   "You will be able to sign in once it is reviewed. "
+                   "Questions? Contact lyvoranlr@gmail.com",
+        )
 
     clear_login_rate_limit(db, payload.username)
     token = create_access_token(data={"sub": user.username})
@@ -1529,6 +1539,7 @@ def admin_list_users(current_admin: User = Depends(get_current_admin), db: Sessi
             "email": u.email,
             "is_admin": u.is_admin,
             "is_enabled": getattr(u, "is_enabled", True),
+            "is_approved": getattr(u, "is_approved", False),
             "created_at": u.created_at.isoformat(),
             "accounts": acct_schemas,
             "ig_accounts": len(accounts),
@@ -1634,6 +1645,32 @@ def admin_toggle_user_enabled(user_id: int, current_admin: User = Depends(get_cu
     action = "enabled" if target_user.is_enabled else "disabled"
     log_to_db("WARNING", f"Admin {current_admin.username} {action} user @{target_user.username}")
     return {"message": f"User @{target_user.username} {action}.", "is_enabled": target_user.is_enabled}
+
+
+@app.patch("/api/admin/users/{user_id}/toggle-approved")
+def admin_toggle_user_approved(user_id: int, current_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Grant or revoke a signup's access to the platform."""
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target_user.id == current_admin.id:
+        raise HTTPException(status_code=400, detail="You cannot revoke your own approval.")
+
+    target_user.is_approved = not getattr(target_user, "is_approved", False)
+    action = "approved" if target_user.is_approved else "revoked approval for"
+    audit(db, "user.approval_changed", current_admin, None, "user", target_user.id,
+          {"is_approved": target_user.is_approved, "username": target_user.username})
+    db.add(Notification(
+        user_id=target_user.id,
+        title="Account approved" if target_user.is_approved else "Access revoked",
+        message=("Your account has been approved. You can sign in and start automating."
+                 if target_user.is_approved else
+                 "An administrator has revoked access to your account."),
+        category="account",
+    ))
+    db.commit()
+    log_to_db("WARNING", f"Admin {current_admin.username} {action} @{target_user.username}")
+    return {"message": f"User @{target_user.username} {action}.", "is_approved": target_user.is_approved}
 
 
 @app.post("/api/admin/system/start")
