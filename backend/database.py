@@ -742,9 +742,11 @@ def init_db():
         ])).delete(synchronize_session=False)
         db.commit()
 
-        # Seed default admin user
-        admin_exists = db.query(User).filter(User.username == "admin").first()
-        if not admin_exists:
+        # Bootstrap an administrator only on a genuinely empty install.
+        # Keying this on the username "admin" meant that renaming or replacing
+        # the default account caused a second one to be silently recreated on
+        # the next startup, with a random password nobody holds.
+        if db.query(User).count() == 0:
             initial_password = os.environ.get("ADMIN_INITIAL_PASSWORD") or secrets.token_urlsafe(16)
             hashed = bcrypt.hashpw(initial_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             admin_user = User(
