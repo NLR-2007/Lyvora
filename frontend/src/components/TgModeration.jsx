@@ -174,10 +174,10 @@ export default function TgModeration() {
                         <button type="button" key={key} onClick={() => handleCategoryToggle(key)}
                           style={{
                             padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 600,
-                            border: "1px solid " + (isChecked ? "#2563EB" : "var(--border-color)"),
+                            border: "1px solid " + (isChecked ? "#6366F1" : "var(--border-color)"),
                             cursor: "pointer", transition: "all 0.2s",
-                            background: isChecked ? "rgba(37, 99, 235, 0.08)" : "transparent",
-                            color: isChecked ? "#2563EB" : "var(--text-secondary)",
+                            background: isChecked ? "rgba(99, 102, 241, 0.08)" : "transparent",
+                            color: isChecked ? "#6366F1" : "var(--text-secondary)",
                           }}>{cat.label}</button>
                       );
                     })}

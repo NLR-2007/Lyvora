@@ -51,7 +51,7 @@ iframe {
 }
 
 :where(button, a, input, select, textarea):focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.24);
+  outline: 3px solid rgba(99, 102, 241, 0.24);
   outline-offset: 2px;
 }
 
@@ -186,10 +186,10 @@ iframe {
   display: inline-flex;
   align-items: center;
   padding: 1px 7px;
-  border: 1px solid #93c5fd;
+  border: 1px solid #A5B4FC;
   border-radius: 999px;
-  color: #1d4ed8;
-  background: #eff6ff;
+  color: #4F46E5;
+  background: #EEF2FF;
   font-size: 0.88em;
   font-weight: 750;
   line-height: 1.55;
@@ -258,7 +258,7 @@ iframe {
 }
 
 .section-eyebrow {
-  color: #2563eb;
+  color: #6366F1;
   font-size: 0.64rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -279,8 +279,8 @@ iframe {
 }
 
 .engine-current-badge.sandbox {
-  color: #1d4ed8;
-  background: #eff6ff;
+  color: #4F46E5;
+  background: #EEF2FF;
 }
 
 .engine-current-badge.official,
@@ -317,14 +317,14 @@ iframe {
 }
 
 .engine-option:hover:not(.disabled) {
-  border-color: #93c5fd;
+  border-color: #A5B4FC;
   background: #fff;
 }
 
 .engine-option.selected {
-  border-color: #60a5fa;
-  background: #eff6ff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+  border-color: #818CF8;
+  background: #EEF2FF;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
 }
 
 .engine-option.disabled {
@@ -340,7 +340,7 @@ iframe {
 }
 
 .engine-option:focus-within {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #6366F1;
   outline-offset: 2px;
 }
 
@@ -355,8 +355,8 @@ iframe {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  color: #1d4ed8;
-  background: #dbeafe;
+  color: #4F46E5;
+  background: #E0E7FF;
 }
 
 .engine-option-icon.meta,
@@ -482,8 +482,8 @@ iframe {
 
 .meta-setup-path > div.current > span {
   color: #fff;
-  background: #2563eb;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+  background: #6366F1;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
 
 .meta-setup-path > div.complete > span {
@@ -632,7 +632,7 @@ iframe {
 }
 
 .meta-webhook-copy code {
-  color: #1e3a8a;
+  color: #3730A3;
   font-weight: 650;
   overflow-wrap: anywhere;
 }
@@ -820,8 +820,8 @@ td {
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 16px;
-  border-color: #bfdbfe;
-  background: linear-gradient(120deg, #ffffff, #eff6ff);
+  border-color: #C7D2FE;
+  background: linear-gradient(120deg, #ffffff, #EEF2FF);
 }
 
 .schedule-setup-card h4 {

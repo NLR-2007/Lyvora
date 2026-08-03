@@ -110,7 +110,7 @@ export default function ContentCalendar({ onCreateSchedule }) {
                       border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
                       borderRadius: "8px",
                       cursor: "pointer",
-                      background: isToday ? "rgba(37, 99, 235, 0.08)" : isSelected ? "rgba(37, 99, 235, 0.04)" : "transparent",
+                      background: isToday ? "rgba(99, 102, 241, 0.08)" : isSelected ? "rgba(99, 102, 241, 0.04)" : "transparent",
                       transition: "all 0.15s",
                     }}
                   >

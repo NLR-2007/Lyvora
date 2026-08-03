@@ -19,12 +19,12 @@ export default function FileUploadArea({ accept, label, file, onFileSelect, onCl
       onDrop={handleDrop}
       onClick={() => !file && inputRef.current?.click()}
       style={{
-        border: `2px dashed ${dragOver ? "#2563EB" : file ? "var(--success)" : "var(--border-color)"}`,
+        border: `2px dashed ${dragOver ? "#6366F1" : file ? "var(--success)" : "var(--border-color)"}`,
         borderRadius: "12px",
         padding: file ? "12px" : "24px",
         textAlign: "center",
         cursor: file ? "default" : "pointer",
-        background: dragOver ? "rgba(37,99,235,0.04)" : file ? "rgba(34,197,94,0.04)" : "var(--bg-tertiary)",
+        background: dragOver ? "rgba(99, 102, 241,0.04)" : file ? "rgba(34,197,94,0.04)" : "var(--bg-tertiary)",
         transition: "all 0.2s",
       }}
     >

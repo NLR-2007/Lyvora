@@ -395,7 +395,7 @@ export default function TgSchedule({ onOpenBots }) {
                         padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 600,
                         border: "none",
                         background: active ? "var(--bg-primary)" : "transparent",
-                        color: active ? "#2563EB" : "var(--text-muted)",
+                        color: active ? "#6366F1" : "var(--text-muted)",
                         cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s",
                         boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                       }}>
@@ -506,7 +506,7 @@ export default function TgSchedule({ onOpenBots }) {
                             {item.name}
                           </p>
                           <p style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                            {item.media_type === "photo" ? "Photo" : "Document"} {idx === 0 && <span style={{ color: "#2563EB", fontWeight: 700, marginLeft: "4px" }}>(Main Post File)</span>}
+                            {item.media_type === "photo" ? "Photo" : "Document"} {idx === 0 && <span style={{ color: "#6366F1", fontWeight: 700, marginLeft: "4px" }}>(Main Post File)</span>}
                           </p>
                         </div>
                         <button type="button" onClick={() => setMediaFiles(prev => prev.filter(f => f.id !== item.id))}
@@ -606,7 +606,7 @@ export default function TgSchedule({ onOpenBots }) {
               type="checkbox" 
               checked={selectedIds.length === posts.length && posts.length > 0} 
               onChange={selectAll}
-              style={{ width: "16px", height: "16px", accentColor: "#2563EB", cursor: "pointer" }}
+              style={{ width: "16px", height: "16px", accentColor: "#6366F1", cursor: "pointer" }}
             />
             Select All
           </label>
@@ -653,7 +653,7 @@ export default function TgSchedule({ onOpenBots }) {
                   type="checkbox" 
                   checked={selectedIds.includes(post.id)}
                   onChange={() => toggleSelect(post.id)}
-                  style={{ width: "16px", height: "16px", marginTop: "12px", cursor: "pointer", accentColor: "#2563EB" }}
+                  style={{ width: "16px", height: "16px", marginTop: "12px", cursor: "pointer", accentColor: "#6366F1" }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>

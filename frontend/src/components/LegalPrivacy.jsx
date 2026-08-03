@@ -21,8 +21,8 @@ export default function LegalPrivacy({ onBack }) {
 
       <div className="legal-container">
         <div className="legal-header">
-          <div className="legal-icon-wrap" style={{ background: "rgba(37, 99, 235, 0.08)" }}>
-            <Shield size={28} color="#2563EB" />
+          <div className="legal-icon-wrap" style={{ background: "rgba(99, 102, 241, 0.08)" }}>
+            <Shield size={28} color="#6366F1" />
           </div>
           <h1>Privacy Policy</h1>
           <div className="legal-meta">

@@ -241,11 +241,11 @@ export default function Messages() {
                   style={{
                     padding: "20px",
                     background: "rgba(255, 255, 255, 0.015)",
-                    border: tpl.is_active ? "1px solid rgba(37, 99, 235, 0.3)" : "1px solid var(--border-color)",
+                    border: tpl.is_active ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid var(--border-color)",
                     display: "flex",
                     flexDirection: "column",
                     gap: "14px",
-                    boxShadow: tpl.is_active ? "0 4px 20px rgba(37, 99, 235, 0.08)" : "none",
+                    boxShadow: tpl.is_active ? "0 4px 20px rgba(99, 102, 241, 0.08)" : "none",
                   }}
                 >
                   <div className="template-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -615,7 +615,7 @@ export default function Messages() {
                 <div
                   style={{
                     background: "var(--bg-secondary)",
-                    border: "1px solid rgba(37, 99, 235, 0.2)",
+                    border: "1px solid rgba(99, 102, 241, 0.2)",
                     borderRadius: "10px",
                     padding: "14px 16px",
                     fontFamily: "monospace",
@@ -650,7 +650,7 @@ export default function Messages() {
           className="glass-card"
           style={{
             background: "var(--accent-light)",
-            border: "1px dashed rgba(37, 99, 235, 0.2)",
+            border: "1px dashed rgba(99, 102, 241, 0.2)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>

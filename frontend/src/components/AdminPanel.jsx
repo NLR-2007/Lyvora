@@ -43,7 +43,7 @@ function UserRow({ user, onToggleAdmin, onToggleEnabled, onDelete, onResetCost }
         </td>
         <td>
           {user.is_admin ? (
-            <span className="badge" style={{ background: "#2563EB", color: "#FFFFFF", fontSize: "10px" }}>ADMIN</span>
+            <span className="badge" style={{ background: "#6366F1", color: "#FFFFFF", fontSize: "10px" }}>ADMIN</span>
           ) : (
             <span className="badge badge-pending" style={{ fontSize: "10px" }}>USER</span>
           )}
@@ -363,7 +363,7 @@ export default function AdminPanel() {
       {/* OVERVIEW */}
       {activeSection === "overview" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div className="glass-card" style={{ borderLeft: "3px solid #2563EB" }}>
+          <div className="glass-card" style={{ borderLeft: "3px solid #6366F1" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
@@ -420,7 +420,7 @@ export default function AdminPanel() {
             </p>
             <div className="stats-grid">
               <StatCard icon={Users} label="Total Users" value={stats?.total_users ?? "—"} color="#0F172A" />
-              <StatCard icon={UserCheck} label="IG Accounts" value={stats?.total_accounts ?? "—"} color="#2563EB" />
+              <StatCard icon={UserCheck} label="IG Accounts" value={stats?.total_accounts ?? "—"} color="#6366F1" />
               <StatCard icon={CheckCircle} label="DMs Sent" value={stats?.total_dms_sent ?? "—"} color="#16A34A" />
               <StatCard icon={XCircle} label="DMs Failed" value={stats?.total_dms_failed ?? "—"} color="#DC2626" />
               <StatCard icon={Clock} label="Pending" value={stats?.total_pending_targets ?? "—"} color="#F59E0B" />
@@ -562,7 +562,7 @@ export default function AdminPanel() {
             <div className="stats-grid">
               <StatCard icon={Server} label="Platform" value={healthData.platform || "—"} color="#0F172A" sub={`Python ${healthData.python_version || "?"}`} />
               <StatCard icon={Cpu} label="CPU" value={healthData.cpu_percent != null ? `${healthData.cpu_percent}%` : "—"} color={healthData.cpu_percent > 80 ? "#DC2626" : "#16A34A"} />
-              <StatCard icon={HardDrive} label="Memory" value={healthData.memory ? `${healthData.memory.percent}%` : "—"} color={healthData.memory?.percent > 80 ? "#DC2626" : "#2563EB"} sub={healthData.memory ? `${formatBytes(healthData.memory.used)} / ${formatBytes(healthData.memory.total)}` : ""} />
+              <StatCard icon={HardDrive} label="Memory" value={healthData.memory ? `${healthData.memory.percent}%` : "—"} color={healthData.memory?.percent > 80 ? "#DC2626" : "#6366F1"} sub={healthData.memory ? `${formatBytes(healthData.memory.used)} / ${formatBytes(healthData.memory.total)}` : ""} />
               <StatCard icon={HardDrive} label="Disk" value={healthData.disk ? `${healthData.disk.percent}%` : "—"} color={healthData.disk?.percent > 90 ? "#DC2626" : "#0EA5E9"} sub={healthData.disk ? `${formatBytes(healthData.disk.used)} / ${formatBytes(healthData.disk.total)}` : ""} />
               <StatCard icon={Database} label="DB Size" value={formatBytes(healthData.db_size_bytes)} color="#8b5cf6" />
               <StatCard icon={Clock} label="Uptime" value={formatUptime(healthData.uptime_seconds)} color="#16A34A" />

@@ -183,7 +183,7 @@ export default function TgBots() {
                           style={{
                             padding: "3px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, border: "none",
                             background: filterType === t.key ? "var(--bg-primary)" : "transparent",
-                            color: filterType === t.key ? "#2563EB" : "var(--text-muted)",
+                            color: filterType === t.key ? "#6366F1" : "var(--text-muted)",
                             cursor: "pointer", transition: "all 0.15s"
                           }}
                         >
