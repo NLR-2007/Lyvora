@@ -56,7 +56,7 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
     { icon: Send, title: "Instagram DM Engine", desc: "Comment-triggered keyword DMs with cascading delivery" },
     { icon: MessageSquare, title: "Telegram Suite", desc: "Scheduled posts, multi-bot management & auto-moderation" },
     { icon: BarChart3, title: "Real-Time Dashboard", desc: "Live logs, send/fail tracking, and unified analytics" },
-    { icon: Shield, title: "Safe & Compliant", desc: "Passwordless auth, opt-out blocklists, rate limiting" },
+    { icon: Shield, title: "Safe & Compliant", desc: "Opt-out blocklists, working hours, and rate limiting" },
   ];
 
   return (
@@ -72,25 +72,30 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
             <div><h1 className="auth-hero-title">Lyvora</h1><span className="auth-logo-caption">Growth workspace</span></div>
           </div>
 
+          {/* Grouped so the column's space-between distributes between three
+              blocks (mark / pitch / credit) instead of every element. */}
+          <div className="auth-hero-main">
           <div className="auth-hero-kicker"><Sparkles size={13}/> One workspace. Two powerful channels.</div>
           <h2 className="auth-hero-heading">Turn conversations into <em>meaningful growth.</em></h2>
           <p className="auth-hero-subtitle">Manage Instagram outreach and Telegram communities from one focused, reliable workspace.</p>
 
           <div className="auth-features">
-            {features.map(({ icon: Icon, title, desc }) => (
+            {features.map(({ icon: Icon, title, desc }, i) => (
               <div key={title} className="auth-feature-item">
-                <div className="auth-feature-icon">
-                  <Icon size={18} />
-                </div>
-                <div>
-                  <p className="auth-feature-title">{title}</p>
-                  <p className="auth-feature-desc">{desc}</p>
-                </div>
+                <span className="auth-feature-index" aria-hidden="true">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="auth-feature-title">
+                  <span className="auth-feature-icon"><Icon size={15} /></span>
+                  {title}
+                </p>
+                <p className="auth-feature-desc">{desc}</p>
               </div>
             ))}
           </div>
 
           <div className="auth-trust-row"><span><CheckCircle2 size={13}/> Secure workspace</span><span><CheckCircle2 size={13}/> Real-time visibility</span></div>
+          </div>
 
           <div className="auth-hero-footer">
             <p>Developed by</p>
@@ -104,18 +109,12 @@ export default function AuthPage({ onAuthSuccess, onBackToHome }) {
         <div className="auth-card">
           <div className="auth-card-header">
             {onBackToHome && (
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="auth-back-home-link"
                 onClick={onBackToHome}
-                style={{
-                  background: "none", border: "none", color: "var(--text-secondary)",
-                  fontSize: "13px", cursor: "pointer", display: "inline-flex",
-                  alignItems: "center", gap: "6px", marginBottom: "16px", padding: 0,
-                  fontFamily: "inherit", fontWeight: 500, transition: "color 0.2s"
-                }}
               >
-                <ArrowLeft size={15} /> Back to Home
+                <ArrowLeft size={14} /> Back to Home
               </button>
             )}
             <h2 className="auth-card-title">
