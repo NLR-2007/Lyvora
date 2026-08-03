@@ -59,7 +59,7 @@ export default function LandingPage({ onGetStarted, onNavigateLegal }) {
           className="inline-flex flex-col items-center gap-0.5 rounded-2xl border border-border bg-background px-5 py-2 font-body mb-6 shadow-sm"
         >
           <span className="font-semibold text-foreground text-xs">Automation built for focused teams</span>
-          <span className="text-[9px] text-muted-foreground/80">powered by NLR GROUP OF COMPANIES</span>
+          <span className="text-[9px] text-muted-foreground/80">Developed by NLR GROUP OF COMPANIES</span>
         </motion.div>
 
         {/* 2. Headline */}
