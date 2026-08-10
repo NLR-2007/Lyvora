@@ -2,44 +2,48 @@
 venv/
 .venv/
 env/
+**/venv/
+**/.venv/
 
 # Python cache files
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
 
 # Local database and data directories
 *.db
-backend/insta_automate.db
-backend/user_data/
+**/*.db
+**/user_data/
 user_data/
 
 # Frontend dependencies and builds
 node_modules/
-frontend/node_modules/
-frontend/.vite-cache/
-frontend/dist/
+**/node_modules/
+.vite-cache/
+**/.vite-cache/
 dist/
+**/dist/
 
 # Local configuration files
 .env
-backend/.env
+**/.env
 
 # Log files
 *.log
-backend/*.log
+**/*.log
 
 # User uploads and temporary files
-backend/uploads/
+**/uploads/
 text.txt
+**/text.txt
 *.mp4
 *.webm
 
 # Test and tooling artefacts
 .pytest_cache/
-frontend/dist/
+**/.pytest_cache/
 
 # Note: backend/migrations/versions/ is intentionally NOT ignored —
 # migration scripts must be committed and applied in order.
-
