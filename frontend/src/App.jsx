@@ -11,7 +11,7 @@ import {
   Shield, LogOut, ChevronDown, Send,
   Image, Bell, Calendar, ChevronRight, Wifi, WifiOff, LoaderCircle
 } from "lucide-react";
-import { getToken, getAuthUser, logout, apiFetch, getApiUrl, setApiUrl } from "./api";
+import { getToken, getAuthUser, logout, apiFetch, getApiUrl, setApiUrl, onConnectionChange } from "./api";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Accounts = lazy(() => import("./components/Accounts"));
@@ -45,6 +45,14 @@ export default function App() {
       verifyConnection();
     }
   }, []);
+
+  // The badge was only ever set at mount and at login, so one failed probe
+  // pinned it to "API Offline" for the rest of the session while every later
+  // call kept succeeding. Track real traffic instead: the dashboard polls the
+  // API continuously, and any reply at all proves the backend is reachable.
+  useEffect(() => onConnectionChange((reachable) => {
+    setConnectionStatus(reachable ? "active" : "error");
+  }), []);
 
   useEffect(() => {
     if (!sidebarOpen) return undefined;

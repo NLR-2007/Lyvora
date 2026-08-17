@@ -98,6 +98,29 @@ export const logout = () => {
   window.location.reload();
 };
 
+// ─── Connection observers ────────────────────────────────────────────────────
+// The status badge used to run its own probe against "/". That probe could fail
+// on its own while every real call kept succeeding, leaving the UI reporting
+// "API Offline" during a perfectly healthy session. Reachability is a property
+// of actual traffic, so report it from here: any HTTP reply — including 401 or
+// 404 — proves the server answered. Only a transport failure means offline.
+const connectionListeners = new Set();
+
+export const onConnectionChange = (listener) => {
+  connectionListeners.add(listener);
+  return () => connectionListeners.delete(listener);
+};
+
+const reportConnection = (reachable) => {
+  connectionListeners.forEach((listener) => {
+    try {
+      listener(reachable);
+    } catch {
+      // A broken listener must not take down the request it observes.
+    }
+  });
+};
+
 // ─── Core fetch wrapper ───────────────────────────────────────────────────────
 export const apiFetch = async (endpoint, options = {}) => {
   const token = getToken();
@@ -126,16 +149,24 @@ export const apiFetch = async (endpoint, options = {}) => {
         response = await request(DEFAULT_BASE_URL);
         setApiUrl(null);
       } catch {
+        reportConnection(false);
         throw new Error(`Cannot reach the backend at ${attemptedBaseUrl}. Check the API URL and make sure the backend and ngrok are running.`);
       }
     } else {
+      reportConnection(false);
       throw new Error(`Cannot reach the backend at ${attemptedBaseUrl}. Make sure the backend is running.`);
     }
   }
 
+  // The server answered, whatever the status code — the API is reachable.
+  reportConnection(true);
+
   // A dead tunnel can still return a gateway response. Treat it like a stale
-  // saved URL when the configured backend is available.
-  if ([502, 503, 504].includes(response.status) && attemptedBaseUrl !== DEFAULT_BASE_URL) {
+  // saved URL when the configured backend is available. ngrok resolves every
+  // *.ngrok-free.dev name through wildcard DNS, so an expired tunnel answers
+  // with 404 (ERR_NGROK_3200) instead of failing to connect — without 404 here
+  // a stale override never self-heals and the app is stuck reporting Offline.
+  if ([404, 502, 503, 504].includes(response.status) && attemptedBaseUrl !== DEFAULT_BASE_URL) {
     try {
       response = await request(DEFAULT_BASE_URL);
       setApiUrl(null);

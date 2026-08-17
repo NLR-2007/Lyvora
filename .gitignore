@@ -41,6 +41,11 @@ text.txt
 *.mp4
 *.webm
 
+# Timestamped backups (database snapshots, .env copies). These are local
+# safety nets and must never reach the repository.
+*.bak-*
+**/*.bak-*
+
 # Test and tooling artefacts
 .pytest_cache/
 **/.pytest_cache/
