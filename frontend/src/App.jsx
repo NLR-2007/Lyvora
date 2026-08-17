@@ -9,9 +9,11 @@ import {
   LayoutDashboard, UserCheck, Mail,
   Settings as SettingsIcon, MessageSquare, Menu, X,
   Shield, LogOut, ChevronDown, Send,
-  Image, Bell, Calendar, ChevronRight, Wifi, WifiOff, LoaderCircle
+  Image, Bell, Calendar, ChevronRight, Wifi, WifiOff, LoaderCircle,
+  Sun, Moon
 } from "lucide-react";
 import { getToken, getAuthUser, logout, apiFetch, getApiUrl, setApiUrl, onConnectionChange } from "./api";
+import { useTheme } from "./lib/useTheme";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Accounts = lazy(() => import("./components/Accounts"));
@@ -30,6 +32,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("checking");
+  const [theme, toggleTheme] = useTheme();
   const [telegramInitialTab, setTelegramInitialTab] = useState("bots");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -201,12 +204,13 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* SVG gradient helper (must stay for brand icon) */}
+      {/* Brand icon fill. Both stops ride currentColor so the mark stays
+          monochrome and inverts with the theme along with its container. */}
       <svg width="0" height="0" style={{ position: "absolute" }}>
         <defs>
           <linearGradient id="brand-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#2563EB" />
-            <stop offset="100%" stopColor="#60A5FA" />
+            <stop offset="0%" stopColor="currentColor" />
+            <stop offset="100%" stopColor="currentColor" />
           </linearGradient>
         </defs>
       </svg>
@@ -335,6 +339,14 @@ export default function App() {
               {connectionStatus === "active" ? <Wifi size={14} /> : <WifiOff size={14} />}
               <span>{connectionStatus === "active" ? "Live" : connectionStatus === "checking" ? "Checking" : "Offline"}</span>
             </div>
+            <button
+              className="header-icon-btn"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
             <button className="header-icon-btn" onClick={() => handleNavClick("notifications")} aria-label="Open notifications">
               <Bell size={17} />
             </button>

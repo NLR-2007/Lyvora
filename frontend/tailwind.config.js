@@ -1,5 +1,12 @@
 /** @type {import('tailwindcss').Config} */
+
+/* Colours are declared with the <alpha-value> placeholder so opacity
+   modifiers (bg-background/70, text-muted-foreground/80) resolve correctly.
+   Without it Tailwind emits a bare hsl() and silently drops the opacity. */
+const token = (name) => `hsl(var(--${name}) / <alpha-value>)`;
+
 export default {
+  darkMode: "class",
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,30 +14,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        background: token("background"),
+        foreground: token("foreground"),
+        card: {
+          DEFAULT: token("card"),
+          foreground: token("card-foreground"),
+        },
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: token("primary"),
+          foreground: token("primary-foreground"),
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: token("secondary"),
+          foreground: token("secondary-foreground"),
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: token("muted"),
+          foreground: token("muted-foreground"),
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: token("accent-hsl"),
+          foreground: token("accent-foreground"),
         },
-        border: "hsl(var(--border))",
-        ring: "hsl(var(--ring))",
+        border: token("border"),
+        ring: token("ring"),
       },
       fontFamily: {
-        display: ["var(--font-display)", "serif"],
-        body: ["var(--font-body)", "sans-serif"],
+        display: ["var(--font-display)", "Georgia", "serif"],
+        body: ["var(--font-body)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -39,7 +51,7 @@ export default {
       },
       boxShadow: {
         dashboard: "var(--shadow-dashboard)",
-      }
+      },
     },
   },
   plugins: [

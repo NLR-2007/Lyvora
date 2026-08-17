@@ -12,7 +12,7 @@ export default function TermsConditions({ onBack }) {
           </button>
           <div className="nav-logo">
             <div className="nav-logo-icon">
-              <Zap size={16} fill="#F97316" stroke="none" />
+              <Zap size={16} fill="var(--warning)" stroke="none" />
             </div>
             <span>Lyvora</span>
           </div>
@@ -22,7 +22,7 @@ export default function TermsConditions({ onBack }) {
       <div className="legal-container">
         <div className="legal-header">
           <div className="legal-icon-wrap" style={{ background: "rgba(249, 115, 22, 0.08)" }}>
-            <FileText size={28} color="#F97316" />
+            <FileText size={28} color="var(--warning)" />
           </div>
           <h1>Terms and Conditions</h1>
           <div className="legal-meta">

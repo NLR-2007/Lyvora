@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "../api";
 
-function StatCard({ icon: Icon, label, value, color = "#0F172A", sub }) {
+function StatCard({ icon: Icon, label, value, color = "var(--text-primary)", sub }) {
   return (
     <div className="glass-card admin-stat-card">
       <div className="admin-stat-icon" style={{ background: `${color}12`, color }}>
@@ -47,7 +47,7 @@ function UserRow({ user, onToggleAdmin, onToggleEnabled, onToggleApproved, onDel
         </td>
         <td>
           {user.is_admin ? (
-            <span className="badge" style={{ background: "#6366F1", color: "#FFFFFF", fontSize: "10px" }}>ADMIN</span>
+            <span className="badge" style={{ background: "var(--accent)", color: "var(--accent-fg)", fontSize: "10px" }}>ADMIN</span>
           ) : (
             <span className="badge badge-pending" style={{ fontSize: "10px" }}>USER</span>
           )}
@@ -167,6 +167,13 @@ export default function AdminPanel() {
   const [showFlagForm, setShowFlagForm] = useState(false);
   const [flagForm, setFlagForm] = useState({ key: "", value: "on", scope: "global" });
   const [userSearch, setUserSearch] = useState("");
+  const [dbInfo, setDbInfo] = useState(null);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [dbError, setDbError] = useState("");
+  const [dbTable, setDbTable] = useState(null);
+  const [dbRows, setDbRows] = useState(null);
+  const [dbOffset, setDbOffset] = useState(0);
+  const [dbRowsLoading, setDbRowsLoading] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -197,6 +204,33 @@ export default function AdminPanel() {
       console.error(e);
     }
   }, [auditFilter]);
+
+  const fetchDatabase = useCallback(async () => {
+    setDbLoading(true);
+    setDbError("");
+    try {
+      setDbInfo(await apiFetch("/api/admin/database"));
+    } catch (e) {
+      setDbError(e.message);
+    } finally {
+      setDbLoading(false);
+    }
+  }, []);
+
+  const fetchTableRows = useCallback(async (table, offset = 0) => {
+    setDbRowsLoading(true);
+    setDbError("");
+    try {
+      const data = await apiFetch(`/api/admin/database/tables/${encodeURIComponent(table)}?limit=25&offset=${offset}`);
+      setDbRows(data);
+      setDbTable(table);
+      setDbOffset(offset);
+    } catch (e) {
+      setDbError(e.message);
+    } finally {
+      setDbRowsLoading(false);
+    }
+  }, []);
 
   const fetchHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -230,7 +264,8 @@ export default function AdminPanel() {
     if (activeSection === "audit") fetchAuditLogs();
     if (activeSection === "health") fetchHealth();
     if (activeSection === "config") fetchFlags();
-  }, [activeSection, fetchAuditLogs, fetchFlags, fetchHealth]);
+    if (activeSection === "database") fetchDatabase();
+  }, [activeSection, fetchAuditLogs, fetchFlags, fetchHealth, fetchDatabase]);
 
   const handleSystemToggle = async (action) => {
     setSystemAction(action);
@@ -329,7 +364,7 @@ export default function AdminPanel() {
     }
   };
 
-  const logColors = { INFO: "#38BDF8", SUCCESS: "#4ADE80", WARNING: "#FBBF24", ERROR: "#F87171", DEBUG: "#A78BFA" };
+  const logColors = { INFO: "var(--info)", SUCCESS: "var(--success)", WARNING: "var(--warning)", ERROR: "var(--danger)", DEBUG: "var(--accent)" };
 
   const formatBytes = (bytes) => {
     if (!bytes) return "—";
@@ -351,6 +386,7 @@ export default function AdminPanel() {
     { id: "audit", label: "Audit Log", icon: FileText },
     { id: "health", label: "Health", icon: Cpu },
     { id: "config", label: "Config", icon: Flag },
+    { id: "database", label: "Database", icon: Database },
     { id: "logs", label: "Logs", icon: Activity },
   ];
 
@@ -383,7 +419,7 @@ export default function AdminPanel() {
           </button>
         ))}
         <div style={{ marginLeft: "auto" }}>
-          <button className="btn btn-secondary" style={{ padding: "6px 12px", fontSize: "12px" }} onClick={() => activeSection === "health" ? fetchHealth() : fetchAll()}>
+          <button className="btn btn-secondary" style={{ padding: "6px 12px", fontSize: "12px" }} onClick={() => activeSection === "health" ? fetchHealth() : activeSection === "database" ? fetchDatabase() : fetchAll()}>
             <RefreshCw size={13} className={(loading || healthLoading) ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
@@ -392,7 +428,7 @@ export default function AdminPanel() {
       {/* OVERVIEW */}
       {activeSection === "overview" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div className="glass-card" style={{ borderLeft: "3px solid #6366F1" }}>
+          <div className="glass-card" style={{ borderLeft: "3px solid var(--accent)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
@@ -448,18 +484,18 @@ export default function AdminPanel() {
               Instagram Automation
             </p>
             <div className="stats-grid">
-              <StatCard icon={Users} label="Total Users" value={stats?.total_users ?? "—"} color="#0F172A" />
-              <StatCard icon={UserCheck} label="IG Accounts" value={stats?.total_accounts ?? "—"} color="#6366F1" />
-              <StatCard icon={CheckCircle} label="DMs Sent" value={stats?.total_dms_sent ?? "—"} color="#16A34A" />
-              <StatCard icon={XCircle} label="DMs Failed" value={stats?.total_dms_failed ?? "—"} color="#DC2626" />
-              <StatCard icon={Clock} label="Pending" value={stats?.total_pending_targets ?? "—"} color="#F59E0B" />
+              <StatCard icon={Users} label="Total Users" value={stats?.total_users ?? "—"} color="var(--text-primary)" />
+              <StatCard icon={UserCheck} label="IG Accounts" value={stats?.total_accounts ?? "—"} color="var(--accent)" />
+              <StatCard icon={CheckCircle} label="DMs Sent" value={stats?.total_dms_sent ?? "—"} color="var(--success)" />
+              <StatCard icon={XCircle} label="DMs Failed" value={stats?.total_dms_failed ?? "—"} color="var(--danger)" />
+              <StatCard icon={Clock} label="Pending" value={stats?.total_pending_targets ?? "—"} color="var(--warning)" />
               <StatCard icon={TrendingUp} label="Success Rate"
                 value={
                   stats && (stats.total_dms_sent + stats.total_dms_failed) > 0
                     ? `${Math.round((stats.total_dms_sent / (stats.total_dms_sent + stats.total_dms_failed)) * 100)}%`
                     : "—"
-                } color="#16A34A" />
-              <StatCard icon={Coins} label="IG Cost" value={stats?.total_ig_cost != null ? `₹${stats.total_ig_cost.toFixed(2)}` : "—"} color="#10B981" />
+                } color="var(--success)" />
+              <StatCard icon={Coins} label="IG Cost" value={stats?.total_ig_cost != null ? `₹${stats.total_ig_cost.toFixed(2)}` : "—"} color="var(--success)" />
             </div>
           </div>
 
@@ -468,11 +504,11 @@ export default function AdminPanel() {
               Telegram Automation
             </p>
             <div className="stats-grid">
-              <StatCard icon={Bot} label="TG Bots" value={stats?.total_tg_bots ?? "—"} color="#0EA5E9" />
-              <StatCard icon={Hash} label="TG Channels" value={stats?.total_tg_channels ?? "—"} color="#0EA5E9" />
-              <StatCard icon={Send} label="Posts Sent" value={stats?.total_tg_posts_sent ?? "—"} color="#16A34A" />
-              <StatCard icon={Clock} label="Posts Pending" value={stats?.total_tg_posts_pending ?? "—"} color="#F59E0B" />
-              <StatCard icon={Coins} label="TG Cost" value={stats?.total_tg_cost != null ? `₹${stats.total_tg_cost.toFixed(2)}` : "—"} color="#10B981" />
+              <StatCard icon={Bot} label="TG Bots" value={stats?.total_tg_bots ?? "—"} color="var(--info)" />
+              <StatCard icon={Hash} label="TG Channels" value={stats?.total_tg_channels ?? "—"} color="var(--info)" />
+              <StatCard icon={Send} label="Posts Sent" value={stats?.total_tg_posts_sent ?? "—"} color="var(--success)" />
+              <StatCard icon={Clock} label="Posts Pending" value={stats?.total_tg_posts_pending ?? "—"} color="var(--warning)" />
+              <StatCard icon={Coins} label="TG Cost" value={stats?.total_tg_cost != null ? `₹${stats.total_tg_cost.toFixed(2)}` : "—"} color="var(--success)" />
             </div>
           </div>
         </div>
@@ -600,12 +636,12 @@ export default function AdminPanel() {
             </div>
           ) : healthData ? (
             <div className="stats-grid">
-              <StatCard icon={Server} label="Platform" value={healthData.platform || "—"} color="#0F172A" sub={`Python ${healthData.python_version || "?"}`} />
-              <StatCard icon={Cpu} label="CPU" value={healthData.cpu_percent != null ? `${healthData.cpu_percent}%` : "—"} color={healthData.cpu_percent > 80 ? "#DC2626" : "#16A34A"} />
-              <StatCard icon={HardDrive} label="Memory" value={healthData.memory ? `${healthData.memory.percent}%` : "—"} color={healthData.memory?.percent > 80 ? "#DC2626" : "#6366F1"} sub={healthData.memory ? `${formatBytes(healthData.memory.used)} / ${formatBytes(healthData.memory.total)}` : ""} />
-              <StatCard icon={HardDrive} label="Disk" value={healthData.disk ? `${healthData.disk.percent}%` : "—"} color={healthData.disk?.percent > 90 ? "#DC2626" : "#0EA5E9"} sub={healthData.disk ? `${formatBytes(healthData.disk.used)} / ${formatBytes(healthData.disk.total)}` : ""} />
-              <StatCard icon={Database} label="DB Size" value={formatBytes(healthData.db_size_bytes)} color="#8b5cf6" />
-              <StatCard icon={Clock} label="Uptime" value={formatUptime(healthData.uptime_seconds)} color="#16A34A" />
+              <StatCard icon={Server} label="Platform" value={healthData.platform || "—"} color="var(--text-primary)" sub={`Python ${healthData.python_version || "?"}`} />
+              <StatCard icon={Cpu} label="CPU" value={healthData.cpu_percent != null ? `${healthData.cpu_percent}%` : "—"} color={healthData.cpu_percent > 80 ? "var(--danger)" : "var(--success)"} />
+              <StatCard icon={HardDrive} label="Memory" value={healthData.memory ? `${healthData.memory.percent}%` : "—"} color={healthData.memory?.percent > 80 ? "var(--danger)" : "var(--accent)"} sub={healthData.memory ? `${formatBytes(healthData.memory.used)} / ${formatBytes(healthData.memory.total)}` : ""} />
+              <StatCard icon={HardDrive} label="Disk" value={healthData.disk ? `${healthData.disk.percent}%` : "—"} color={healthData.disk?.percent > 90 ? "var(--danger)" : "var(--info)"} sub={healthData.disk ? `${formatBytes(healthData.disk.used)} / ${formatBytes(healthData.disk.total)}` : ""} />
+              <StatCard icon={Database} label="DB Size" value={formatBytes(healthData.db_size_bytes)} color="var(--accent)" />
+              <StatCard icon={Clock} label="Uptime" value={formatUptime(healthData.uptime_seconds)} color="var(--success)" />
             </div>
           ) : (
             <div className="glass-card" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}><RefreshCw size={18} className="animate-spin" style={{ marginRight: "8px" }} /> Loading health data...</div>
@@ -716,6 +752,153 @@ export default function AdminPanel() {
         </div>
       )}
 
+      {/* DATABASE */}
+      {activeSection === "database" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {dbError && <div className="auth-alert auth-alert-error">{dbError}</div>}
+
+          {dbLoading && !dbInfo && (
+            <div className="glass-card" style={{ padding: "24px", color: "var(--text-secondary)" }}>
+              Reading schema...
+            </div>
+          )}
+
+          {dbInfo && (
+            <>
+              {/* database.py silently falls back to SQLite when the configured
+                  server is unreachable, so the app can serve a different and
+                  empty database than the one configured. Say so loudly. */}
+              {dbInfo.using_fallback && (
+                <div className="glass-card" style={{ padding: "16px 18px", borderColor: "var(--warning)", background: "var(--warning-glow)" }}>
+                  <strong style={{ color: "var(--warning)" }}>Running on the SQLite fallback</strong>
+                  <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                    MySQL was configured but could not be reached at startup, so the app connected to SQLite
+                    instead. Data written now goes to the fallback file, not MySQL. Restart the backend once
+                    MySQL is running.
+                  </p>
+                </div>
+              )}
+
+              <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))" }}>
+                <StatCard icon={Database} label="Engine" value={dbInfo.dialect} sub={dbInfo.using_fallback ? "fallback active" : "as configured"} />
+                <StatCard icon={HardDrive} label="Tables" value={dbInfo.table_count} />
+                <StatCard icon={BarChart2} label="Total rows" value={dbInfo.total_rows.toLocaleString()} />
+                <StatCard icon={Shield} label="Migration" value={dbInfo.alembic_revision || "none"} sub="alembic revision" />
+              </div>
+
+              <div className="glass-card" style={{ padding: "18px 20px" }}>
+                <h2 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "10px" }}>Connection</h2>
+                <dl style={{ display: "grid", gap: "8px", fontSize: "13px" }}>
+                  <div style={{ display: "flex", gap: "12px" }}>
+                    <dt style={{ minWidth: "110px", color: "var(--text-secondary)" }}>Active</dt>
+                    <dd style={{ fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{dbInfo.active_url}</dd>
+                  </div>
+                  <div style={{ display: "flex", gap: "12px" }}>
+                    <dt style={{ minWidth: "110px", color: "var(--text-secondary)" }}>Configured</dt>
+                    <dd style={{ fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{dbInfo.configured_url}</dd>
+                  </div>
+                  {dbInfo.size_bytes != null && (
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <dt style={{ minWidth: "110px", color: "var(--text-secondary)" }}>File size</dt>
+                      <dd>{(dbInfo.size_bytes / 1048576).toFixed(2)} MB</dd>
+                    </div>
+                  )}
+                </dl>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "12px" }}>
+                  Credentials are masked server-side. This view is read-only: there is no SQL console, because
+                  the backend is routinely reachable over a public tunnel.
+                </p>
+              </div>
+
+              <div className="glass-card" style={{ padding: "18px 20px" }}>
+                <h2 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "12px" }}>Tables</h2>
+                <div className="admin-db-tables">
+                  {dbInfo.tables.map((t) => (
+                    <button
+                      key={t.name}
+                      onClick={() => fetchTableRows(t.name, 0)}
+                      className="btn btn-secondary"
+                      style={{
+                        justifyContent: "space-between",
+                        padding: "10px 12px",
+                        fontSize: "12px",
+                        borderColor: dbTable === t.name ? "var(--accent)" : "var(--border-color)",
+                      }}
+                    >
+                      <span style={{ fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
+                      <span style={{ color: "var(--text-muted)" }}>{t.rows == null ? "-" : t.rows.toLocaleString()}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {dbRows && (
+                <div className="glass-card" style={{ padding: "18px 20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+                    <h2 style={{ fontSize: "15px", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{dbRows.table}</h2>
+                    <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                      {dbRows.total === 0
+                        ? "empty"
+                        : `${dbOffset + 1}-${Math.min(dbOffset + dbRows.limit, dbRows.total)} of ${dbRows.total.toLocaleString()}`}
+                    </span>
+                  </div>
+
+                  <div className="admin-db-scroll">
+                    <table className="data-table db-table" style={{ fontSize: "12px", minWidth: "100%" }}>
+                      <thead>
+                        <tr>
+                          {dbRows.columns.map((c) => (
+                            <th key={c} style={{ whiteSpace: "nowrap" }}>{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dbRows.rows.map((row, i) => (
+                          <tr key={i}>
+                            {dbRows.columns.map((c) => (
+                              <td
+                                key={c}
+                                data-label={c}
+                                title={row[c] == null ? "" : String(row[c])}
+                                style={{ maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                              >
+                                {row[c] == null ? <span style={{ color: "var(--text-muted)" }}>null</span> : String(row[c])}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {dbRows.rows.length === 0 && (
+                      <p style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No rows.</p>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: "6px 12px", fontSize: "12px" }}
+                      disabled={dbOffset === 0 || dbRowsLoading}
+                      onClick={() => fetchTableRows(dbRows.table, Math.max(0, dbOffset - dbRows.limit))}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: "6px 12px", fontSize: "12px" }}
+                      disabled={dbOffset + dbRows.limit >= dbRows.total || dbRowsLoading}
+                      onClick={() => fetchTableRows(dbRows.table, dbOffset + dbRows.limit)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* LOGS */}
       {activeSection === "logs" && (
         <div>
@@ -726,14 +909,14 @@ export default function AdminPanel() {
           </div>
           <div className="logs-console">
             {logs.length === 0 ? (
-              <p style={{ color: "#525252", textAlign: "center", padding: "20px" }}>No logs yet.</p>
+              <p style={{ color: "var(--text-secondary)", textAlign: "center", padding: "20px" }}>No logs yet.</p>
             ) : (
               logs.map(log => (
                 <div key={log.id} className="log-line">
                   <span className="log-timestamp">
                     {new Date(log.timestamp.endsWith("Z") ? log.timestamp : log.timestamp + "Z").toLocaleTimeString()}
                   </span>
-                  <span className="log-level" style={{ color: logColors[log.level] || "#D4D4D4" }}>
+                  <span className="log-level" style={{ color: logColors[log.level] || "var(--border-hover)" }}>
                     [{log.level}]
                   </span>
                   <span className="log-message">{log.message}</span>

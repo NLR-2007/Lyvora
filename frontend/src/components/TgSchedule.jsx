@@ -395,7 +395,7 @@ export default function TgSchedule({ onOpenBots }) {
                         padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 600,
                         border: "none",
                         background: active ? "var(--bg-primary)" : "transparent",
-                        color: active ? "#6366F1" : "var(--text-muted)",
+                        color: active ? "var(--accent)" : "var(--text-muted)",
                         cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s",
                         boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                       }}>
@@ -497,7 +497,7 @@ export default function TgSchedule({ onOpenBots }) {
                         {item.preview ? (
                           <img src={item.preview} alt="" style={{ width: "36px", height: "36px", borderRadius: "6px", objectFit: "cover" }} />
                         ) : (
-                          <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "rgba(14,165,233,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0EA5E9" }}>
+                          <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "rgba(14,165,233,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--info)" }}>
                             <FileText size={18} />
                           </div>
                         )}
@@ -506,7 +506,7 @@ export default function TgSchedule({ onOpenBots }) {
                             {item.name}
                           </p>
                           <p style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                            {item.media_type === "photo" ? "Photo" : "Document"} {idx === 0 && <span style={{ color: "#6366F1", fontWeight: 700, marginLeft: "4px" }}>(Main Post File)</span>}
+                            {item.media_type === "photo" ? "Photo" : "Document"} {idx === 0 && <span style={{ color: "var(--accent)", fontWeight: 700, marginLeft: "4px" }}>(Main Post File)</span>}
                           </p>
                         </div>
                         <button type="button" onClick={() => setMediaFiles(prev => prev.filter(f => f.id !== item.id))}
@@ -606,7 +606,7 @@ export default function TgSchedule({ onOpenBots }) {
               type="checkbox" 
               checked={selectedIds.length === posts.length && posts.length > 0} 
               onChange={selectAll}
-              style={{ width: "16px", height: "16px", accentColor: "#6366F1", cursor: "pointer" }}
+              style={{ width: "16px", height: "16px", accentColor: "var(--accent)", cursor: "pointer" }}
             />
             Select All
           </label>
@@ -653,19 +653,19 @@ export default function TgSchedule({ onOpenBots }) {
                   type="checkbox" 
                   checked={selectedIds.includes(post.id)}
                   onChange={() => toggleSelect(post.id)}
-                  style={{ width: "16px", height: "16px", marginTop: "12px", cursor: "pointer", accentColor: "#6366F1" }}
+                  style={{ width: "16px", height: "16px", marginTop: "12px", cursor: "pointer", accentColor: "var(--accent)" }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#0EA5E9", background: "rgba(14, 165, 233, 0.08)", padding: "2px 10px", borderRadius: "12px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--info)", background: "rgba(14, 165, 233, 0.08)", padding: "2px 10px", borderRadius: "12px" }}>
                         {post.channel_title}
                       </span>
                       <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", background: "var(--bg-tertiary)", padding: "2px 8px", borderRadius: "10px", display: "flex", alignItems: "center", gap: "3px" }}>
                         <TypeIcon size={10} /> {typeInfo.label}
                       </span>
                       {post.batch_messages && (
-                        <span style={{ fontSize: "11px", fontWeight: 600, color: "#8B5CF6", background: "rgba(139, 92, 246, 0.08)", padding: "2px 8px", borderRadius: "10px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--accent)", background: "rgba(139, 92, 246, 0.08)", padding: "2px 8px", borderRadius: "10px" }}>
                           +{post.batch_messages.length} msgs
                         </span>
                       )}

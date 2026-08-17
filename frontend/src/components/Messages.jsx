@@ -401,7 +401,7 @@ export default function Messages() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Sparkles size={16} style={{ color: "#d946ef" }} />
+              <Sparkles size={16} style={{ color: "var(--accent)" }} />
               <span>Ask Sophie AI Copywriter</span>
             </div>
             <span style={{ fontSize: "11px", opacity: 0.8 }}>{showSophie ? "Hide Assistant" : "Need ideas? Ask Sophie"}</span>
@@ -470,7 +470,7 @@ export default function Messages() {
               </div>
 
               {sophieError && (
-                <div style={{ color: "#ef4444", fontSize: "12px", background: "rgba(239, 68, 68, 0.05)", padding: "8px", borderRadius: "6px", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
+                <div style={{ color: "var(--danger)", fontSize: "12px", background: "rgba(239, 68, 68, 0.05)", padding: "8px", borderRadius: "6px", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
                   {sophieError}
                 </div>
               )}
@@ -498,7 +498,7 @@ export default function Messages() {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      style={{ height: "36px", padding: "0 14px", background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", border: "none", fontSize: "12px", fontWeight: "600" }}
+                      style={{ height: "36px", padding: "0 14px", background: "linear-gradient(135deg, var(--accent) 0%, var(--accent) 100%)", border: "none", fontSize: "12px", fontWeight: "600" }}
                       onClick={handleApplySophieResult}
                       disabled={sophieLoading}
                     >
@@ -531,7 +531,7 @@ export default function Messages() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  style={{ height: "36px", padding: "0 14px", alignSelf: "flex-start", background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", border: "none", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}
+                  style={{ height: "36px", padding: "0 14px", alignSelf: "flex-start", background: "linear-gradient(135deg, var(--accent) 0%, var(--accent) 100%)", border: "none", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}
                   onClick={handleSophieGenerate}
                   disabled={sophieLoading || !sophiePrompt.trim()}
                 >

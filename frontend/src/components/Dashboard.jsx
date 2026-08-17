@@ -180,17 +180,17 @@ export default function Dashboard() {
           <div className="stat-value">{analytics?.total_failed ?? status.failed_count}</div>
         </div>
         <div className="glass-card stat-card tone-violet">
-          <div className="stat-icon" style={{ color: "#8b5cf6" }}><FileText size={20} /></div>
+          <div className="stat-icon" style={{ color: "var(--accent)" }}><FileText size={20} /></div>
           <div className="stat-label">Templates</div>
           <div className="stat-value">{analytics?.total_templates ?? 0}</div>
         </div>
         <div className="glass-card stat-card tone-amber">
-          <div className="stat-icon" style={{ color: "#f59e0b" }}><UserCheck size={20} /></div>
+          <div className="stat-icon" style={{ color: "var(--warning)" }}><UserCheck size={20} /></div>
           <div className="stat-label">Accounts</div>
           <div className="stat-value">{analytics?.total_accounts ?? 0}</div>
         </div>
         <div className="glass-card stat-card tone-emerald">
-          <div className="stat-icon" style={{ color: "#10b981" }}><Coins size={20} /></div>
+          <div className="stat-icon" style={{ color: "var(--success)" }}><Coins size={20} /></div>
           <div className="stat-label" title="Instagram (₹0.45/msg) & Telegram (₹0.27/msg)">Total Cost</div>
           <div className="stat-value">₹{(analytics?.total_cost ?? 0).toFixed(2)}</div>
           <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "-4px" }}>
@@ -231,7 +231,7 @@ export default function Dashboard() {
                     <stop offset="95%" stopColor="var(--danger)" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="name" stroke="var(--text-muted)" style={{ fontSize: "12px" }} />
                 <YAxis stroke="var(--text-muted)" style={{ fontSize: "12px" }} />
                 <Tooltip

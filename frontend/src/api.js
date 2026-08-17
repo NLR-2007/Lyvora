@@ -176,8 +176,12 @@ export const apiFetch = async (endpoint, options = {}) => {
     }
   }
 
-  // Auto-logout on expired/invalid token
-  if (response.status === 401) {
+  // Auto-logout on expired/invalid token. The auth routes are exempt: a 401
+  // from /api/auth/login means the credentials were wrong, not that a session
+  // expired. Reloading there would throw away the error the form needs to show,
+  // so the page just blinks and the user is told nothing.
+  const isAuthAttempt = endpoint.startsWith("/api/auth/");
+  if (response.status === 401 && !isAuthAttempt) {
     logout();
     throw new Error("Session expired. Please log in again.");
   }

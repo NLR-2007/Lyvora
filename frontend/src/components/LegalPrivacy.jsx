@@ -12,7 +12,7 @@ export default function LegalPrivacy({ onBack }) {
           </button>
           <div className="nav-logo">
             <div className="nav-logo-icon">
-              <Zap size={16} fill="#F97316" stroke="none" />
+              <Zap size={16} fill="var(--warning)" stroke="none" />
             </div>
             <span>Lyvora</span>
           </div>
@@ -22,7 +22,7 @@ export default function LegalPrivacy({ onBack }) {
       <div className="legal-container">
         <div className="legal-header">
           <div className="legal-icon-wrap" style={{ background: "rgba(99, 102, 241, 0.08)" }}>
-            <Shield size={28} color="#6366F1" />
+            <Shield size={28} color="var(--accent)" />
           </div>
           <h1>Privacy Policy</h1>
           <div className="legal-meta">

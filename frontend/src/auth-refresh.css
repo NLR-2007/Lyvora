@@ -12,24 +12,24 @@
 .auth-page {
   /* Canvas — matched to the landing page so the marketing -> signup flow
      reads as one product. Do not reintroduce a dark palette here. */
-  --paper:      #F8FAFC;
-  --paper-card: #FFFFFF;
-  --paper-sunk: #F1F5F9;
+  --paper:      var(--bg-secondary);
+  --paper-card: var(--bg-primary);
+  --paper-sunk: var(--bg-tertiary);
 
   /* Type */
-  --ink:        #0F172A;
-  --ink-soft:   #475569;
-  --ink-mute:   #94A3B8;
+  --ink:        var(--text-primary);
+  --ink-soft:   var(--text-secondary);
+  --ink-mute:   var(--text-muted);
 
   /* Accent — the landing page's --accent (hsl 239 84% 67%) */
-  --signal:     #6366F1;
-  --signal-700: #4F46E5;
-  --signal-lo:  rgba(99, 102, 241, 0.10);
-  --signal-mid: rgba(99, 102, 241, 0.40);
-  --warm:       #F97316;
+  --signal:     var(--accent);
+  --signal-700: var(--accent-hover);
+  --signal-lo:  var(--accent-glow);
+  --signal-mid: var(--border-hover);
+  --warm:       var(--warning);
 
-  --hair:       #E2E8F0;
-  --hair-soft:  #EEF1F6;
+  --hair:       var(--border-color);
+  --hair-soft:  var(--bg-tertiary);
 
   /* The app's own stack. A page-specific family is exactly the kind of
      inconsistency the single-theme rule exists to prevent. */
@@ -117,7 +117,7 @@
   display: grid;
   place-items: center;
   border-radius: 11px;
-  color: #fff;
+  color: var(--accent-fg);
   background: linear-gradient(150deg, var(--signal), var(--signal-700));
   box-shadow: 0 8px 20px rgba(99, 102, 241, 0.28);
 }
@@ -403,18 +403,18 @@
 }
 
 .auth-alert-error {
-  color: #B42318;
-  border: 1px solid #FECDCA;
-  background: #FEF3F2;
+  color: var(--danger);
+  border: 1px solid var(--danger-glow);
+  background: var(--danger-glow);
 }
-.auth-alert-error span { color: #fff; background: #D92D20; }
+.auth-alert-error span { color: var(--accent-fg); background: var(--danger); }
 
 .auth-alert-success {
-  color: #027A48;
-  border: 1px solid #A6F4C5;
-  background: #ECFDF3;
+  color: var(--success);
+  border: 1px solid var(--success-glow);
+  background: var(--success-glow);
 }
-.auth-alert-success span { color: #fff; background: #12B76A; }
+.auth-alert-success span { color: var(--accent-fg); background: var(--success); }
 
 .auth-form { display: flex; flex-direction: column; gap: 17px; }
 .auth-field { display: flex; flex-direction: column; gap: 8px; }
@@ -502,7 +502,7 @@
   margin-top: 6px;
   border: 0;
   border-radius: 10px;
-  color: #fff;
+  color: var(--accent-fg);
   background: linear-gradient(100deg, var(--signal), var(--signal-700));
   box-shadow: 0 8px 22px rgba(99, 102, 241, 0.26);
   font: inherit;

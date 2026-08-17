@@ -583,7 +583,7 @@ export default function Settings() {
         {/* Safety Notice Panel */}
         <div className="glass-card" style={{ height: "fit-content" }}>
           <h4 style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-primary)", display: "flex", gap: "8px", alignItems: "center" }}>
-            <AlertCircle size={18} style={{ color: "#64748B" }} /> GDPR & Compliance Recommendations
+            <AlertCircle size={18} style={{ color: "var(--text-secondary)" }} /> GDPR & Compliance Recommendations
           </h4>
           <div style={{ color: "var(--text-secondary)", fontSize: "13px", marginTop: "12px", display: "flex", flexDirection: "column", gap: "14px", lineHeight: "1.6" }}>
             <p>

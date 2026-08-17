@@ -174,10 +174,10 @@ export default function TgModeration() {
                         <button type="button" key={key} onClick={() => handleCategoryToggle(key)}
                           style={{
                             padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 600,
-                            border: "1px solid " + (isChecked ? "#6366F1" : "var(--border-color)"),
+                            border: "1px solid " + (isChecked ? "var(--accent)" : "var(--border-color)"),
                             cursor: "pointer", transition: "all 0.2s",
                             background: isChecked ? "rgba(99, 102, 241, 0.08)" : "transparent",
-                            color: isChecked ? "#6366F1" : "var(--text-secondary)",
+                            color: isChecked ? "var(--accent)" : "var(--text-secondary)",
                           }}>{cat.label}</button>
                       );
                     })}
@@ -258,7 +258,7 @@ export default function TgModeration() {
             const config = parseConfig(rule.config);
             return (
               <div key={rule.id} className="glass-card tg-card-item" style={{ opacity: rule.is_active ? 1 : 0.5 }}>
-                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: rule.rule_type === "custom" ? "rgba(139, 92, 246, 0.08)" : "rgba(14, 165, 233, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: rule.rule_type === "custom" ? "#8B5CF6" : "#0EA5E9", flexShrink: 0 }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: rule.rule_type === "custom" ? "rgba(139, 92, 246, 0.08)" : "rgba(14, 165, 233, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: rule.rule_type === "custom" ? "var(--accent)" : "var(--info)", flexShrink: 0 }}>
                   <Icon size={16} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -266,7 +266,7 @@ export default function TgModeration() {
                     <span style={{ fontWeight: 600, fontSize: "14px" }}>{getRuleLabel(rule.rule_type)}</span>
                     <span style={{ fontSize: "11px", color: "var(--text-muted)", background: "var(--bg-tertiary)", padding: "1px 8px", borderRadius: "10px" }}>{rule.channel_title}</span>
                     {rule.rule_type === "custom" && config.match_mode && (
-                      <span style={{ fontSize: "10px", fontWeight: 600, color: "#8B5CF6", background: "rgba(139,92,246,0.08)", padding: "1px 8px", borderRadius: "10px" }}>
+                      <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--accent)", background: "rgba(139,92,246,0.08)", padding: "1px 8px", borderRadius: "10px" }}>
                         {config.match_mode}
                       </span>
                     )}

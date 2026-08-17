@@ -61,7 +61,7 @@ export default function NotificationCenter() {
           <Bell size={20} />
           <span style={{ fontSize: "16px", fontWeight: "600" }}>Notifications</span>
           {unreadCount > 0 && (
-            <span className="badge" style={{ background: "var(--accent)", color: "#fff" }}>{unreadCount} unread</span>
+            <span className="badge" style={{ background: "var(--accent)", color: "var(--accent-fg)" }}>{unreadCount} unread</span>
           )}
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>

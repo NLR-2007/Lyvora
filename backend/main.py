@@ -11,7 +11,7 @@ import httpx
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from backend.config import cors_origins, cors_origin_regex, validate_runtime_config, settings
@@ -2744,4 +2744,143 @@ def admin_system_health(current_admin: User = Depends(get_current_admin), db: Se
         "ig_bot_running": getattr(bot_module, "BOT_RUNNING", False),
         "tg_service_running": telegram_service.is_running,
         "uptime_seconds": int(time.time() - app.state.start_time) if hasattr(app.state, "start_time") else None,
+    }
+
+
+# ─── Database inspector ───────────────────────────────────────────────────────
+# Read-only by design. There is deliberately no endpoint that executes arbitrary
+# SQL: this app is routinely exposed through an ngrok tunnel, and a web SQL
+# console behind a single admin flag is a direct path from one compromised
+# session to the whole database. Everything below either reports metadata or
+# returns rows from a table name checked against the live schema.
+
+def _mask_db_url(url: str) -> str:
+    """Hide credentials before a connection string is sent to a browser."""
+    try:
+        return re.sub(r"://([^:/@]+)(:[^@]*)?@", lambda m: f"://{m.group(1)}:****@", url)
+    except Exception:
+        return "unavailable"
+
+
+@app.get("/api/admin/database")
+def admin_database_overview(current_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Engine in use, migration revision, and per-table row counts."""
+    from sqlalchemy import inspect as sa_inspect
+    from backend.database import engine
+    from backend.config import settings as cfg
+
+    configured = cfg.DATABASE_URL or ""
+    active = str(engine.url)
+    dialect = engine.dialect.name
+
+    # database.py falls back to SQLite when the configured server is unreachable.
+    # Surfacing that is the whole point: otherwise the app quietly serves a
+    # different database than the one the operator configured.
+    fell_back = configured.startswith("mysql") and dialect != "mysql"
+
+    tables = []
+    try:
+        inspector = sa_inspect(engine)
+        for name in sorted(inspector.get_table_names()):
+            try:
+                count = db.execute(text(f"SELECT COUNT(*) FROM {_quote_ident(name, engine)}")).scalar()
+            except Exception:
+                count = None
+            tables.append({
+                "name": name,
+                "rows": count,
+                "columns": len(inspector.get_columns(name)),
+            })
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not inspect schema: {exc}")
+
+    revision = None
+    try:
+        revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    except Exception:
+        revision = None
+
+    size_bytes = None
+    if dialect == "sqlite":
+        try:
+            path = engine.url.database
+            if path and os.path.exists(path):
+                size_bytes = os.path.getsize(path)
+        except OSError:
+            size_bytes = None
+
+    return {
+        "dialect": dialect,
+        "active_url": _mask_db_url(active),
+        "configured_url": _mask_db_url(configured),
+        "using_fallback": fell_back,
+        "alembic_revision": revision,
+        "size_bytes": size_bytes,
+        "table_count": len(tables),
+        "total_rows": sum(t["rows"] or 0 for t in tables),
+        "tables": tables,
+    }
+
+
+def _quote_ident(name: str, engine) -> str:
+    """Quote an identifier for the active dialect."""
+    return engine.dialect.identifier_preparer.quote(name)
+
+
+@app.get("/api/admin/database/tables/{table_name}")
+def admin_database_table(
+    table_name: str,
+    limit: int = 25,
+    offset: int = 0,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Page through one table's rows.
+
+    `table_name` is matched against the live schema rather than interpolated,
+    so an arbitrary string can never reach the SQL text.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    from backend.database import engine
+
+    inspector = sa_inspect(engine)
+    if table_name not in inspector.get_table_names():
+        raise HTTPException(status_code=404, detail="No such table.")
+
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    columns = [c["name"] for c in inspector.get_columns(table_name)]
+    quoted = _quote_ident(table_name, engine)
+
+    total = db.execute(text(f"SELECT COUNT(*) FROM {quoted}")).scalar() or 0
+    result = db.execute(
+        text(f"SELECT * FROM {quoted} LIMIT :limit OFFSET :offset"),
+        {"limit": limit, "offset": offset},
+    )
+
+    # Columns that hold secrets must never leave the server, even for an admin.
+    REDACT = ("password", "hash", "token", "secret", "session", "cookie", "api_key")
+
+    rows = []
+    for row in result.mappings():
+        item = {}
+        for key, value in row.items():
+            if any(marker in key.lower() for marker in REDACT):
+                item[key] = "••• redacted" if value not in (None, "") else None
+            elif isinstance(value, (bytes, bytearray)):
+                item[key] = f"<{len(value)} bytes>"
+            elif isinstance(value, datetime):
+                item[key] = value.isoformat()
+            else:
+                item[key] = value
+        rows.append(item)
+
+    return {
+        "table": table_name,
+        "columns": columns,
+        "rows": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }

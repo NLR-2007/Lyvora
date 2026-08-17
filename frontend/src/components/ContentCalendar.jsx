@@ -118,7 +118,7 @@ export default function ContentCalendar({ onCreateSchedule }) {
                       {day}
                     </div>
                     {posts.slice(0, 3).map((p, j) => (
-                      <div key={j} style={{ fontSize: "10px", padding: "2px 4px", borderRadius: "3px", background: statusColor(p.status), color: "#fff", marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div key={j} style={{ fontSize: "10px", padding: "2px 4px", borderRadius: "3px", background: statusColor(p.status), color: "var(--accent-fg)", marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {parseUtcDate(p.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
                     ))}
@@ -149,7 +149,7 @@ export default function ContentCalendar({ onCreateSchedule }) {
                         <Clock size={12} />
                         {parseUtcDate(p.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
-                      <span className="badge" style={{ background: statusColor(p.status), color: "#fff", fontSize: "10px" }}>
+                      <span className="badge" style={{ background: statusColor(p.status), color: "var(--accent-fg)", fontSize: "10px" }}>
                         {p.status}
                       </span>
                     </div>

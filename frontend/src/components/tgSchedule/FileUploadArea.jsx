@@ -19,7 +19,7 @@ export default function FileUploadArea({ accept, label, file, onFileSelect, onCl
       onDrop={handleDrop}
       onClick={() => !file && inputRef.current?.click()}
       style={{
-        border: `2px dashed ${dragOver ? "#6366F1" : file ? "var(--success)" : "var(--border-color)"}`,
+        border: `2px dashed ${dragOver ? "var(--accent)" : file ? "var(--success)" : "var(--border-color)"}`,
         borderRadius: "12px",
         padding: file ? "12px" : "24px",
         textAlign: "center",
@@ -40,7 +40,7 @@ export default function FileUploadArea({ accept, label, file, onFileSelect, onCl
           {preview ? (
             <img src={preview} alt="" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" }} />
           ) : (
-            <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "rgba(14,165,233,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0EA5E9" }}>
+            <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "rgba(14,165,233,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--info)" }}>
               <FileText size={20} />
             </div>
           )}

@@ -57,8 +57,8 @@ export default function SophieAssistant({ onApply }) {
 
   const primaryButtonStyle = {
     height: "34px", borderRadius: "7px", border: "none", cursor: "pointer",
-    fontWeight: "600", fontSize: "12px", color: "#fff",
-    background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)",
+    fontWeight: "600", fontSize: "12px", color: "var(--accent-fg)",
+    background: "linear-gradient(135deg, var(--accent) 0%, var(--accent) 100%)",
     display: "flex", alignItems: "center", gap: "6px",
   };
 
@@ -99,7 +99,7 @@ export default function SophieAssistant({ onApply }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Sparkles size={15} style={{ color: "#d946ef" }} />
+          <Sparkles size={15} style={{ color: "var(--accent)" }} />
           <span>Ask Sophie AI Copywriter</span>
         </div>
         <span style={{ fontSize: "11px", opacity: 0.8 }}>
@@ -169,7 +169,7 @@ export default function SophieAssistant({ onApply }) {
           </div>
 
           {error && (
-            <div style={{ color: "#ef4444", fontSize: "12px", background: "rgba(239,68,68,0.05)", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(239,68,68,0.15)" }}>
+            <div style={{ color: "var(--danger)", fontSize: "12px", background: "rgba(239,68,68,0.05)", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(239,68,68,0.15)" }}>
               {error}
             </div>
           )}

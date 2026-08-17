@@ -137,7 +137,7 @@ export default function TgBots() {
           {bots.map((bot) => (
             <div key={bot.id} className="glass-card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
-                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(14, 165, 233, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0EA5E9", flexShrink: 0 }}>
+                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(14, 165, 233, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--info)", flexShrink: 0 }}>
                   <Bot size={20} />
                 </div>
                 <div style={{ flex: 1, minWidth: "120px" }}>
@@ -183,7 +183,7 @@ export default function TgBots() {
                           style={{
                             padding: "3px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, border: "none",
                             background: filterType === t.key ? "var(--bg-primary)" : "transparent",
-                            color: filterType === t.key ? "#6366F1" : "var(--text-muted)",
+                            color: filterType === t.key ? "var(--accent)" : "var(--text-muted)",
                             cursor: "pointer", transition: "all 0.15s"
                           }}
                         >

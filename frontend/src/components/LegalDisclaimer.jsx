@@ -12,7 +12,7 @@ export default function LegalDisclaimer({ onBack }) {
           </button>
           <div className="nav-logo">
             <div className="nav-logo-icon">
-              <Zap size={16} fill="#F97316" stroke="none" />
+              <Zap size={16} fill="var(--warning)" stroke="none" />
             </div>
             <span>Lyvora</span>
           </div>
@@ -22,7 +22,7 @@ export default function LegalDisclaimer({ onBack }) {
       <div className="legal-container">
         <div className="legal-header">
           <div className="legal-icon-wrap" style={{ background: "rgba(245, 158, 11, 0.08)" }}>
-            <AlertTriangle size={28} color="#F59E0B" />
+            <AlertTriangle size={28} color="var(--warning)" />
           </div>
           <h1>Legal Disclaimer</h1>
           <div className="legal-meta">
